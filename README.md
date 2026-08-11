@@ -74,7 +74,7 @@ Modify this to the path for your virtual environment (DO NOT include "/bin/pytho
 This should install linien-relock and all of its necessary dependencies inside your venv
 
 ### 3. Installing linien-relock on your Red Pitaya:
-First, you will need to install the correct Red Pitaya OS onto the SD card. To simplify installation (and account for the fact that not all installs of linien-relock will have internet on the Red Pitaya), I have included a complete Red Pitaya OS here on [Sharepoint](https://hu.sharepoint.com/:u:/s/NiGroup/IQClvW9NiAPqS6540t8hLtEMAZ98yUOj4WA5WNUK4suSZds?e=isUMH) and here on the [RbCs Google Drive](https://drive.google.com/file/d/1_biIQuU2KGAHckCdhaMcWsv22seFAfQE/view?usp=sharing)
+First, you will need to install the correct Red Pitaya OS onto the SD card. To simplify installation (and account for the fact that not all installs of linien-relock will have internet on the Red Pitaya), I have included a complete Red Pitaya OS here on [Sharepoint](https://hu.sharepoint.com/:u:/r/sites/NiGroup/Shared%20Documents/RbCs%202026%20-%20Linked%20Files/Linien%20Relock%20OS.zip?d=w26874e108d11460991eb922e7ce85b6b&csf=1&web=1&e=GwXyEw) and here on the [RbCs Google Drive](https://drive.google.com/file/d/1xMceH1rooe4qmd-3XlVzNgDr1vGNPzwM/view?usp=drive_link)
 
 To install the Red Pitaya OS with linien-relock already on it, unzip the "Linien Relock OS" folder and follow the instructions on the [SD card install page](https://redpitaya.readthedocs.io/en/latest/quickStart/SDcard/SDcard.html#windows-gui), selecting the unzipped "Linien Relock OS" folder in the Flash from file options. This will take ~half an hour and cannot be interrupted.
 
@@ -163,7 +163,7 @@ install_linien.bat
 ```
 
 ### 3. Installing linien-relock on your Red Pitaya:
-First, you will need to install the correct Red Pitaya OS onto the SD card. To simplify installation (and account for the fact that not all installs of linien-relock will have internet on the Red Pitaya), I have included a complete Red Pitaya OS here on [Sharepoint](https://hu.sharepoint.com/:u:/s/NiGroup/IQClvW9NiAPqS6540t8hLtEMAZ98yUOj4WA5WNUK4suSZds?e=isUMH) and here on the [RbCs Google Drive](https://drive.google.com/file/d/1_biIQuU2KGAHckCdhaMcWsv22seFAfQE/view?usp=sharing)
+First, you will need to install the correct Red Pitaya OS onto the SD card. To simplify installation (and account for the fact that not all installs of linien-relock will have internet on the Red Pitaya), I have included a complete Red Pitaya OS here on [Sharepoint](https://hu.sharepoint.com/:u:/r/sites/NiGroup/Shared%20Documents/RbCs%202026%20-%20Linked%20Files/Linien%20Relock%20OS.zip?d=w26874e108d11460991eb922e7ce85b6b&csf=1&web=1&e=GwXyEw) and here on the [RbCs Google Drive](https://drive.google.com/file/d/1xMceH1rooe4qmd-3XlVzNgDr1vGNPzwM/view?usp=drive_link)
 
 To install the Red Pitaya OS with linien-relock already on it, unzip the "Linien Relock OS" folder and follow the instructions on the [SD card install page](https://redpitaya.readthedocs.io/en/latest/quickStart/SDcard/SDcard.html#windows-gui), selecting the unzipped "Linien Relock OS" folder in the Flash from file options. This will take ~half an hour and cannot be interrupted.
 
