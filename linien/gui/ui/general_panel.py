@@ -1,6 +1,5 @@
 import numpy as np
 from PyQt5 import QtGui, QtWidgets, QtWidgets
-from PyQt5.QtCore import QTimer
 import time
 import threading
 
@@ -124,8 +123,16 @@ class GeneralPanel(QtWidgets.QWidget, CustomWidget):
                 process_value=lambda v: ANALOG_OUT_V * v
             )
 
-        self.ids.ttl_pulse_button.clicked.connect(self.send_ttl_pulse)
-        #self._ttl_thread = None
+        # --- GPIO TTL control ---
+        self.ids.ttl_high_button.clicked.connect(lambda: self.set_ttl_state(True))
+        self.ids.ttl_low_button.clicked.connect(lambda: self.set_ttl_state(False))
+
+        # Register listeners so the monitor tracks the actual parameter values,
+        # including changes made server-side by the relock routine or by
+        # lock_status_panel. on_change() also fires immediately with the current
+        # value, which initialises the monitor.
+        params.gpio_p_out.on_change(self.update_ttl_monitor)
+        params.gpio_n_out.on_change(self.update_ttl_monitor)
 
     def channel_mixing_changed(self):
         value = int(self.ids.channel_mixing_slider.value()) - 128
@@ -211,29 +218,47 @@ class GeneralPanel(QtWidgets.QWidget, CustomWidget):
                 slider.setEnabled(False)
             self.control.write_data()
 
-    def send_ttl_pulse(self):
-            
-        self.ids.ttl_pulse_button.setEnabled(False)
-        self.ids.ttl_pulse_button.setText("Sending pulse...")
+    def set_ttl_state(self, high):
+        """Latch every DIO pin (both banks) HIGH (3.3 V) or LOW (0 V).
 
-        # Store original GPIO values
-        original_gpio_p = self.parameters.gpio_p_out.value
-        original_gpio_n = self.parameters.gpio_n_out.value
-
-        # Set all GPIO pins high (both P and N)
-        self.parameters.gpio_p_out.value = 0b11111111  # All 8 P pins high
-        self.parameters.gpio_n_out.value = 0b11111111  # All 8 N pins high
+        This is a persistent state, not a pulse -- it stays until changed here
+        or overridden by the relock routine.
+        """
+        value = 0b11111111 if high else 0b00000000
+        self.parameters.gpio_p_out.value = value  # DIO0_P .. DIO7_P
+        self.parameters.gpio_n_out.value = value  # DIO0_N .. DIO7_N
         self.control.write_data()
 
-        def restore_output():
-            self.parameters.gpio_p_out.value = original_gpio_p
-            self.parameters.gpio_n_out.value = original_gpio_n
-            self.control.write_data()
-            self.ids.ttl_pulse_button.setEnabled(True)
-            self.ids.ttl_pulse_button.setText("Send 10s GPIO TTL Pulse (3.3 V)")
+    def update_ttl_monitor(self, _value=None):
+        """Refresh the TTL state monitor from the gpio_*_out parameters."""
+        # May fire before connection_established() has finished.
+        if not hasattr(self, 'parameters'):
+            return
 
-        # Create timer to restore original values after 10 seconds
-        QTimer.singleShot(10000, restore_output)
+        p = self.parameters.gpio_p_out.value
+        n = self.parameters.gpio_n_out.value
+
+        if p == 0b11111111 and n == 0b11111111:
+            text = 'HIGH  (3.3 V)'
+            style = 'color: #ffffff; background: #c62828;'
+        elif p == 0b00000000 and n == 0b00000000:
+            text = 'LOW  (0 V)'
+            style = 'color: #ffffff; background: #2e7d32;'
+        else:
+            text = 'MIXED'
+            style = 'color: #000000; background: #ffb300;'
+
+        self.ids.ttl_status_label.setStyleSheet(
+            style + ' border: 1px solid #444444; border-radius: 3px; padding: 4px;'
+        )
+        self.ids.ttl_status_label.setText(text)
+        self.ids.ttl_status_detail.setText(
+            'gpio_p_out = {:08b}   gpio_n_out = {:08b}'.format(p, n)
+        )
+
+        # Grey out whichever button matches the current state.
+        self.ids.ttl_high_button.setEnabled(text != 'HIGH  (3.3 V)')
+        self.ids.ttl_low_button.setEnabled(text != 'LOW  (0 V)')
 
     def turn_off_analog_out_2_on_shutdown(self):
         try:

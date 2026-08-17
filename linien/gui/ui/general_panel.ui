@@ -754,19 +754,107 @@
    <item>
     <widget class="QGroupBox" name="groupBox_ttl">
      <property name="title">
-      <string>TTL Pulse Control</string>
+      <string>GPIO TTL Control (all DIO pins)</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_ttl">
       <item>
-       <widget class="QPushButton" name="ttl_pulse_button">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>40</height>
-         </size>
+       <layout class="QHBoxLayout" name="horizontalLayout_ttl_monitor">
+        <item>
+         <widget class="QLabel" name="label_ttl_monitor">
+          <property name="font">
+           <font>
+            <weight>75</weight>
+            <bold>true</bold>
+           </font>
+          </property>
+          <property name="text">
+           <string>State</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="ttl_status_label">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>32</height>
+           </size>
+          </property>
+          <property name="font">
+           <font>
+            <weight>75</weight>
+            <bold>true</bold>
+           </font>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">color: #555555; background: #e0e0e0; border: 1px solid #999999; border-radius: 3px; padding: 4px;</string>
+          </property>
+          <property name="text">
+           <string>UNKNOWN</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="ttl_status_detail">
+        <property name="styleSheet">
+         <string notr="true">color: #666666; font-family: monospace;</string>
         </property>
         <property name="text">
-         <string>Send 10s GPIO TTL Pulse (3.3 V)</string>
+         <string>gpio_p_out = --------   gpio_n_out = --------</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_ttl_buttons">
+        <item>
+         <widget class="QPushButton" name="ttl_high_button">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>40</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Assert HIGH (3.3 V)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="ttl_low_button">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>40</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Assert LOW (0 V)</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_ttl_note">
+        <property name="styleSheet">
+         <string notr="true">color: #aa5500; font-style: italic;</string>
+        </property>
+        <property name="text">
+         <string>Drives all 16 DIO pins (DIO0-7 _P and _N) together. Relock will override this state on lock/unlock events.</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
         </property>
        </widget>
       </item>
