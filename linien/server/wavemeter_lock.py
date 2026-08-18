@@ -46,6 +46,16 @@ CALIBRATION_MIN_SHIFT_MHZ = 20.0
 # Give up on a stage rather than steering forever.
 STEERING_TIMEOUT_S = 120.0
 
+# What the last look at the wavemeter told us.  These are kept apart because
+# they demand opposite responses: the acquisition callback runs far faster than
+# the poll interval, so most looks return an answer already acted on, and
+# treating that silence as "the laser is missing" would relock a laser that is
+# sitting exactly where it should be.
+READING_OK = 'ok'                # a new measurement of the laser
+READING_ABSENT = 'absent'        # the wavemeter answered; the laser is not there
+READING_STALE = 'stale'          # the wavemeter could not be reached
+READING_UNCHANGED = 'unchanged'  # no new answer since the last one acted on
+
 
 class WavemeterLock:
     """Lock kept honest by an absolute frequency reading."""
@@ -83,7 +93,7 @@ class WavemeterLock:
         self.calibration_probe_idx = 0
         self.calibration_start = None
         self.stage_started_at = None
-        self.last_reading_time = None
+        self.last_answer_arrival = None
         self.ignore_readings_before = None
 
         if self.approacher:
@@ -214,11 +224,11 @@ class WavemeterLock:
         self.control.continue_acquisition()
 
     def steer_towards_setpoint(self):
-        reading, detuning_MHz = self._current_detuning()
+        outcome, reading, detuning_MHz = self._current_detuning()
 
-        if reading is None:
-            # Nothing to steer by. Steering blind is worse than waiting, but
-            # waiting forever is not a lock either.
+        if outcome != READING_OK:
+            # Nothing new to steer by. Steering blind is worse than waiting,
+            # but waiting forever is not a lock either.
             if self._stage_timed_out():
                 return self.fail(self.parameters.wavemeter_status.value
                                  or 'no wavemeter reading while steering')
@@ -355,17 +365,25 @@ class WavemeterLock:
     def watch_lock(self):
         """Locked: relock when the frequency leaves the window.
 
-        A wavemeter that cannot be reached is not evidence about the laser, so
-        the lock is held and the condition flagged instead of relocking on what
-        may well be a network problem.
+        Only a new answer is judged, so the out-of-range count measures polls
+        rather than acquisition frames -- five means five wavemeter readings,
+        not five turns of a loop that spins much faster than the wavemeter is
+        asked anything.
         """
-        reading, detuning_MHz = self._current_detuning()
+        outcome, reading, detuning_MHz = self._current_detuning()
 
-        if reading is None and self.parameters.wavemeter_stale.value:
-            # Held, not locked-out: leave the TTL where it is and wait.
+        if outcome == READING_UNCHANGED:
+            # Nothing has happened since the last judgement. Silence is not
+            # evidence either way.
             return
 
-        if reading is None:
+        if outcome == READING_STALE:
+            # A wavemeter that cannot be reached says nothing about the laser,
+            # so hold the lock and flag it rather than relocking on what may
+            # well be a network problem.
+            return
+
+        if outcome == READING_ABSENT:
             # The wavemeter answered and does not see the laser anywhere in the
             # search window. That is a statement about the laser, not the link.
             return self._count_out_of_range('laser not found by the wavemeter')
@@ -460,40 +478,48 @@ class WavemeterLock:
         return self._now() - self.stage_started_at > STEERING_TIMEOUT_S
 
     def _current_detuning(self):
-        """Latest wavemeter answer, published to the GUI on the way past.
+        """The newest wavemeter answer not yet acted on, published to the GUI.
 
-        Returns (reading, detuning_MHz); reading is None when there is no
-        usable measurement, and `wavemeter_stale` distinguishes "could not ask"
-        from "asked, and the laser is not there".
+        Returns (outcome, reading, detuning_MHz).  Every answer is consumed at
+        most once: the poller stores when each arrived, and an arrival already
+        seen comes back as READING_UNCHANGED.  Without that, a stage running at
+        the acquisition rate would act many times on one measurement -- five
+        "readings" out of range would elapse in well under a second, and a step
+        would be judged by a reading taken before it was made.
         """
-        reading, error, reachable, age = self.monitor.latest()
+        reading, error, reachable, arrival = self.monitor.latest()
+
+        if arrival is None:
+            # Nothing fetched yet at all.
+            self._set_stale('no answer from the wavemeter yet')
+            return READING_UNCHANGED, None, None
+
+        if arrival == self.last_answer_arrival:
+            return READING_UNCHANGED, None, None
 
         if error is not None or not reachable:
-            self._set_stale(error or 'no answer from the wavemeter yet')
-            return None, None
+            self.last_answer_arrival = arrival
+            self._set_stale(error or 'no answer from the wavemeter')
+            return READING_STALE, None, None
 
         if reading is None:
+            self.last_answer_arrival = arrival
             self.parameters.wavemeter_stale.value = False
             self.parameters.wavemeter_status.value = \
                 'wavemeter sees no laser within %.3f GHz of the setpoint' \
                 % self.parameters.wavemeter_search_range.value
-            return None, None
+            return READING_ABSENT, None, None
 
-        # One poll answers many acquisition frames; only act on a fresh one so
-        # that a steering step is judged by a reading taken after it.  Freshness
-        # is decided on the local clock -- the timestamp in the reading comes
-        # from the wavemeter PC and the two are not synchronised.
-        arrival = self._now() - (age or 0.0)
+        # A steering step is judged by a reading that arrived after the laser
+        # had time to settle, not by one already in flight when it was made.
+        # Freshness is decided on the local clock: the timestamp inside the
+        # reading comes from the wavemeter PC, which is not synchronised.
         if self.ignore_readings_before is not None:
             if arrival < self.ignore_readings_before:
-                return None, None
+                return READING_UNCHANGED, None, None
             self.ignore_readings_before = None
 
-        reading_time = reading.get('time')
-        if reading_time is not None and reading_time == self.last_reading_time:
-            return None, None
-        self.last_reading_time = reading_time
-
+        self.last_answer_arrival = arrival
         detuning_MHz = float(reading['detuning_MHz'])
 
         self.parameters.wavemeter_stale.value = False
@@ -506,7 +532,7 @@ class WavemeterLock:
         self.parameters.wavemeter_status.value = \
             '%.1f MHz from setpoint' % detuning_MHz
 
-        return reading, detuning_MHz
+        return READING_OK, reading, detuning_MHz
 
     def _set_stale(self, message):
         if not self.parameters.wavemeter_stale.value:

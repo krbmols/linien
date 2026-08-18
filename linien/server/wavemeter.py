@@ -162,12 +162,17 @@ class WavemeterMonitor:
             self._stop.wait(self.poll_interval)
 
     def latest(self):
-        """(reading, error, reachable, age_s).
+        """(reading, error, reachable, arrival).
 
         ``reading`` is None when the wavemeter has no measurement for this
         laser; ``error`` is set instead when it could not be reached at all.
-        ``age_s`` is None until the first answer arrives.
+
+        ``arrival`` is the local time this answer was stored, or None before
+        the first poll.  Callers run far faster than the poll interval, so most
+        calls return an answer they have already seen; comparing ``arrival``
+        against the last one consumed is how a caller tells "no news" from
+        "news that says nothing", which are not the same thing at all when
+        deciding whether a laser has gone missing.
         """
         with self._lock:
-            age = None if self._time is None else time() - self._time
-            return self._reading, self._error, self._reachable, age
+            return self._reading, self._error, self._reachable, self._time

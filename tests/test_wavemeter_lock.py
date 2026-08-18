@@ -10,6 +10,7 @@ reports that frequency the way the real /api/latest route would.
 import pickle
 import sys
 from os import path
+from time import time
 
 import numpy as np
 
@@ -122,13 +123,26 @@ class FakeLaser:
 
 
 class StubMonitor:
-    """A WavemeterMonitor that polls inline instead of on a thread."""
+    """A WavemeterMonitor that polls inline instead of on a thread.
 
-    def __init__(self, laser, parameters):
+    ``reads_per_poll`` is what makes this honest: the real monitor fetches once
+    a second while the lock looks at it on every acquisition frame, so the same
+    answer -- and the same arrival time -- comes back several times in a row.
+    A stub that invents a fresh answer per look hides every bug that depends on
+    telling "no news" from "news".
+    """
+
+    def __init__(self, laser, parameters, reads_per_poll=1):
         self.laser = laser
         self.parameters = parameters
+        self.reads_per_poll = reads_per_poll
         self.started = False
         self.stopped = False
+        self.looks = 0
+        # Arrivals are stamped on the same clock the real monitor uses, since
+        # the lock compares them against its own settle-time deadlines.
+        self.clock = time()
+        self.answer = None
 
     def start(self):
         self.started = True
@@ -136,7 +150,9 @@ class StubMonitor:
     def stop(self):
         self.stopped = True
 
-    def latest(self):
+    def poll(self):
+        # Strictly increasing, so two polls are never mistaken for one.
+        self.clock = max(time(), self.clock + 1e-6)
         try:
             reading = self.laser.read(
                 self.parameters.wavemeter_url.value,
@@ -144,8 +160,15 @@ class StubMonitor:
                 self.parameters.wavemeter_search_range.value,
             )
         except WavemeterError as error:
-            return None, str(error), False, 0.0
-        return reading, None, True, 0.0
+            self.answer = (None, str(error), False, self.clock)
+            return
+        self.answer = (reading, None, True, self.clock)
+
+    def latest(self):
+        if self.looks % self.reads_per_poll == 0:
+            self.poll()
+        self.looks += 1
+        return self.answer
 
 
 def make_parameters():
@@ -441,6 +464,41 @@ check('ramp restored',
       parameters.ramp_amplitude.value
       == parameters.wavemeter_lock_initial_ramp_amplitude.value)
 
+print('a slow poll does not look like a missing laser')
+# The lock looks at the monitor on every acquisition frame but the wavemeter is
+# only asked once a second, so most looks repeat the previous answer.
+parameters = make_parameters()
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.0)
+control = FakeControl(parameters)
+monitor = StubMonitor(laser, parameters, reads_per_poll=6)
+lock = WavemeterLock(control, parameters, monitor=monitor,
+                     wait_time_between_current_corrections=0)
+spectrum = get_signal(parameters.ramp_amplitude.value, 0.0)
+middle = len(spectrum) // 2
+margin = int(0.01 * len(spectrum))
+lock.run(middle - margin, middle + margin, spectrum, auto_offset=False)
+
+check('locks despite repeated answers',
+      feed_until(lock, parameters, laser,
+                 lambda: parameters.wavemeter_lock_locked.value))
+feed(lock, parameters, laser, 60)
+check('a laser on setpoint is left alone',
+      parameters.gpio_p_out.value == 0b00000000,
+      '(relocked: %s)' % parameters.wavemeter_status.value)
+check('no out-of-range counted', lock.out_of_range_count == 0)
+
+print('the out-of-range count measures polls, not frames')
+laser.offset_GHz = 0.5
+allowed = parameters.wavemeter_max_out_of_range.value
+# One poll short of the limit, even though that is many frames.
+feed(lock, parameters, laser, (allowed - 1) * monitor.reads_per_poll)
+check('still locked one poll short',
+      parameters.gpio_p_out.value == 0b00000000,
+      '(count %d)' % lock.out_of_range_count)
+feed(lock, parameters, laser, monitor.reads_per_poll)
+check('relocks on the limiting poll',
+      parameters.gpio_p_out.value == 0b11111111)
+
 print('the monitor never raises at the caller')
 parameters = make_parameters()
 
@@ -450,10 +508,14 @@ def always_broken(*args, **kwargs):
 
 
 monitor = WavemeterMonitor('http://h', SETPOINT, 1.0, reader=always_broken)
+check('no arrival before the first poll', monitor.latest()[3] is None)
 monitor.poll()
-reading, error, reachable, age = monitor.latest()
+reading, error, reachable, arrival = monitor.latest()
 check('error captured', reading is None and error == 'nope' and not reachable)
-check('age recorded', age is not None and age < 5)
+check('arrival recorded', arrival is not None)
+check('arrival stable between polls', monitor.latest()[3] == arrival)
+monitor.poll()
+check('arrival advances on a new poll', monitor.latest()[3] > arrival)
 
 print()
 if failures:
