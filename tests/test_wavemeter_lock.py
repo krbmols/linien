@@ -86,13 +86,16 @@ class FakeLaser:
     """
 
     def __init__(self, parameters, GHz_per_V=-3.0, offset_GHz=4.0, dark=False,
-                 unreachable=False):
+                 unreachable=False, drift_per_read_GHz=0.0):
         self.parameters = parameters
         self.GHz_per_V = GHz_per_V
         self.dark = dark
         self.unreachable = unreachable
         self.center_at_start = parameters.center.value
         self.offset_GHz = offset_GHz
+        # Frequency walks by this much on every reading, so a laser can be
+        # caught passing through the handoff window rather than sitting in it.
+        self.drift_per_read_GHz = drift_per_read_GHz
         self.clock = 1_000_000.0
 
     @property
@@ -110,6 +113,8 @@ class FakeLaser:
         detuning_GHz = self.frequency - setpoint
         if abs(detuning_GHz) > search_range:
             return None
+
+        self.offset_GHz += self.drift_per_read_GHz
 
         self.clock += 1.0
         return {
@@ -508,6 +513,40 @@ check('verified and locked', parameters.wavemeter_lock_locked.value)
 check('TTL stays low', parameters.gpio_p_out.value == 0b00000000)
 check('watching', parameters.wavemeter_lock_watching.value)
 check('verification cleared', not parameters.wavemeter_lock_confirming.value)
+
+print('a laser still moving does not trigger the handoff')
+# Drifting steadily through the window: it is inside on some readings, but it
+# is not settled, and the line search must not be handed a moving target.
+parameters = make_parameters()
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=-0.6,
+                  drift_per_read_GHz=0.08)
+lock, control, monitor = start_lock(parameters, laser)
+inside_seen = 0
+for _ in range(40):
+    feed(lock, parameters, laser, 1)
+    if abs(laser.frequency - SETPOINT) * 1e3 <= \
+            parameters.wavemeter_handoff_window.value:
+        inside_seen += 1
+    if parameters.wavemeter_lock_approaching.value:
+        break
+check('the laser did pass through the window', inside_seen > 0,
+      '(never entered it, test says nothing)')
+check('did not hand over while moving',
+      not parameters.wavemeter_lock_approaching.value,
+      '(handed over after %d readings inside)' % inside_seen)
+
+print('a settled laser does hand off')
+parameters = make_parameters()
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.0)
+lock, control, monitor = start_lock(parameters, laser)
+check('hands over once it sits still',
+      feed_until(lock, parameters, laser,
+                 lambda: parameters.wavemeter_lock_approaching.value
+                 or parameters.wavemeter_lock_confirming.value
+                 or parameters.wavemeter_lock_locked.value))
+check('waited for repeated confirmation',
+      lock.settled_count >= 3 or parameters.wavemeter_lock_locked.value,
+      '(settled after %d)' % lock.settled_count)
 
 print('a lock on the wrong line is released again')
 parameters = make_parameters()

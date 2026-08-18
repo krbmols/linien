@@ -54,6 +54,22 @@ MAX_STEP_V = 0.2
 CALIBRATION_PROBES_V = (0.02, 0.05, 0.1, 0.2)
 CALIBRATION_MIN_SHIFT_MHZ = 20.0
 
+# Readings that must land inside the handoff window before the line search
+# takes over.  Crossing into the window is not the same as having arrived: a
+# laser still moving when the search starts keeps sliding while the search
+# zooms, the search walks the ramp centre chasing it, and it leaves the window
+# again -- which sends the whole thing back to steering, over and over.  Waiting
+# for it to sit still costs a couple of seconds and settles that loop.
+HANDOFF_CONFIRMATIONS = 3
+
+# Being inside the window is not enough on its own either.  A laser drifting
+# slowly crosses the window over several readings and is inside for all of
+# them, while still sliding straight through.  So successive readings also have
+# to agree to within this fraction of the window before it counts as settled --
+# at the default 200 MHz window, 20 MHz of movement between readings, against
+# the ~1 MHz a laser sitting still actually shows.
+SETTLED_FRACTION = 0.1
+
 # Give up on a stage rather than steering forever.
 STEERING_TIMEOUT_S = 120.0
 
@@ -102,6 +118,8 @@ class WavemeterLock:
             self.parameters.wavemeter_lock_confirming.value = False
 
         self.out_of_range_count = 0
+        self.settled_count = 0
+        self.last_detuning_MHz = None
         self.slope_GHz_per_V = None
         self.calibration_probe_idx = 0
         self.calibration_start = None
@@ -259,9 +277,23 @@ class WavemeterLock:
             return self._calibrate_slope(detuning_MHz)
 
         handoff_MHz = self.parameters.wavemeter_handoff_window.value
-        if abs(detuning_MHz) <= handoff_MHz:
-            return self._begin_approaching()
+        moved_MHz = (None if self.last_detuning_MHz is None
+                     else abs(detuning_MHz - self.last_detuning_MHz))
+        self.last_detuning_MHz = detuning_MHz
 
+        if abs(detuning_MHz) <= handoff_MHz:
+            # Inside the window: stop correcting and watch whether it stays
+            # put.  Handing the line search a laser that is still moving is
+            # what sends this straight back to steering.
+            if moved_MHz is not None and moved_MHz <= handoff_MHz * SETTLED_FRACTION:
+                self.settled_count += 1
+                if self.settled_count >= HANDOFF_CONFIRMATIONS:
+                    return self._begin_approaching()
+            else:
+                self.settled_count = 0
+            return
+
+        self.settled_count = 0
         self._correct_center(detuning_MHz)
 
     def _calibrate_slope(self, detuning_MHz):
@@ -328,7 +360,7 @@ class WavemeterLock:
 
     def _begin_approaching(self):
         """Hand over to the correlation approacher used by the other modes."""
-        print('wavemeter lock: at the setpoint, approaching the line')
+        print('wavemeter lock: settled at the setpoint, approaching the line')
         self.parameters.wavemeter_lock_steering.value = False
         self.parameters.wavemeter_lock_approaching.value = True
         self.stage_started_at = self._now()
