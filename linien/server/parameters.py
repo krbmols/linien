@@ -51,6 +51,7 @@ class Parameters(BaseParameters):
             'check_lock', 'analog_out_1', 'analog_out_2', 'analog_out_3',
             'wavemeter_url', 'wavemeter_setpoint', 'wavemeter_range',
             'wavemeter_search_range', 'wavemeter_poll_interval',
+            'wavemeter_min_amp',
             'wavemeter_max_out_of_range', 'wavemeter_handoff_window',
             'wavemeter_settle_time', 'wavemeter_steering_ramp_amplitude',
             'wavemeter_use_raw', 'watch_wavemeter_lock',
@@ -321,6 +322,11 @@ class Parameters(BaseParameters):
         # enough not to catch a neighbouring laser: a laser missing from a
         # window this wide is taken to be off, not merely unmeasured.
         self.wavemeter_search_range = Parameter(start=2.0, min_=0)
+        # Saturation below which the wavemeter throws a reading away as noise.
+        # Set it below the amplitude the laser actually reads -- watch that on
+        # the wavemeter's own page -- or the laser will intermittently vanish
+        # from the answer and look like it has gone missing.
+        self.wavemeter_min_amp = Parameter(start=0.02, min_=0, max_=1)
         # Seconds between wavemeter requests.
         self.wavemeter_poll_interval = Parameter(start=1.0, min_=0.05)
         # Consecutive out-of-range readings before relocking. One bad reading

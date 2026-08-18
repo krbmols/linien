@@ -125,6 +125,7 @@ class WavemeterLock:
                 self.parameters.wavemeter_setpoint.value,
                 self.parameters.wavemeter_search_range.value,
                 use_raw=bool(self.parameters.wavemeter_use_raw.value),
+                min_amp=self.parameters.wavemeter_min_amp.value,
                 poll_interval=self.parameters.wavemeter_poll_interval.value,
             )
         self.monitor.start()

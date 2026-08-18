@@ -235,7 +235,11 @@ def feed(lock, parameters, laser, n=1):
 print('url building')
 check('endpoint appended',
       build_url('http://host:8050', 500.0, 1.0)
-      == 'http://host:8050/api/latest?freq=500.000000&tol=1.000000&raw=1')
+      == 'http://host:8050/api/latest?freq=500.000000&tol=1.000000'
+         '&min_amp=0.0200&raw=1',
+      '(got %s)' % build_url('http://host:8050', 500.0, 1.0))
+check('amplitude floor passed through',
+      '&min_amp=0.0050' in build_url('http://host:8050', 500.0, 1.0, min_amp=0.005))
 check('trailing slash tolerated',
       build_url('http://host:8050/', 500.0, 1.0).startswith(
           'http://host:8050/api/latest'))

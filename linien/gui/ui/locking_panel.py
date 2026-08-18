@@ -49,7 +49,8 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
         self.ids.wavemeter_url.editingFinished.connect(self.wavemeter_url_changed)
         for name in ('wavemeter_setpoint', 'wavemeter_range',
                      'wavemeter_search_range', 'wavemeter_handoff_window',
-                     'wavemeter_poll_interval', 'wavemeter_max_out_of_range',
+                     'wavemeter_min_amp', 'wavemeter_poll_interval',
+                     'wavemeter_max_out_of_range',
                      'wavemeter_steering_ramp_amplitude',
                      'wavemeter_settle_time'):
             element = getattr(self.ids, name)
@@ -130,7 +131,8 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
         # Wavemeter lock parameters
         for name in ('wavemeter_url', 'wavemeter_setpoint', 'wavemeter_range',
                      'wavemeter_search_range', 'wavemeter_handoff_window',
-                     'wavemeter_poll_interval', 'wavemeter_max_out_of_range',
+                     'wavemeter_min_amp', 'wavemeter_poll_interval',
+                     'wavemeter_max_out_of_range',
                      'wavemeter_steering_ramp_amplitude',
                      'wavemeter_settle_time'):
             param2ui(getattr(params, name), getattr(self.ids, name))
@@ -348,7 +350,8 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
                 self.ids.wavemeter_url.text(),
                 self.ids.wavemeter_setpoint.value(),
                 self.ids.wavemeter_search_range.value(),
-                use_raw=bool(self.ids.wavemeter_use_raw_checkbox.checkState())
+                use_raw=bool(self.ids.wavemeter_use_raw_checkbox.checkState()),
+                min_amp=self.ids.wavemeter_min_amp.value()
             )
         except WavemeterError as error:
             self.ids.wavemeter_reading_label.setStyleSheet('color: #d40000')

@@ -23,6 +23,13 @@ DEFAULT_USE_RAW = True
 
 DEFAULT_TIMEOUT = 2.0
 
+# Saturation below which the wavemeter discards a reading as noise rather than
+# light.  The server's own default is 0.05, inherited from its CSV logger, which
+# is uncomfortably close to what a dim laser actually reads -- a dip below it
+# makes the laser vanish from the answer entirely.  Ask for a lower floor and
+# leave the margin to the user, who can watch the reported amplitude.
+DEFAULT_MIN_AMP = 0.02
+
 ENDPOINT = '/api/latest'
 
 
@@ -30,7 +37,8 @@ class WavemeterError(Exception):
     """The wavemeter could not be reached, or answered with nonsense."""
 
 
-def build_url(base_url, setpoint, search_range, use_raw=DEFAULT_USE_RAW):
+def build_url(base_url, setpoint, search_range, use_raw=DEFAULT_USE_RAW,
+              min_amp=DEFAULT_MIN_AMP):
     """Query URL for one laser.
 
     ``base_url`` may be the server root ('http://192.168.0.119:8050') or the
@@ -42,14 +50,16 @@ def build_url(base_url, setpoint, search_range, use_raw=DEFAULT_USE_RAW):
     if not base.endswith(ENDPOINT):
         base += ENDPOINT
 
-    url = '%s?freq=%.6f&tol=%.6f' % (base, setpoint, search_range)
+    url = '%s?freq=%.6f&tol=%.6f&min_amp=%.4f' % (
+        base, setpoint, search_range, min_amp)
     if use_raw:
         url += '&raw=1'
     return url
 
 
 def read_once(base_url, setpoint, search_range, use_raw=DEFAULT_USE_RAW,
-              timeout=DEFAULT_TIMEOUT, opener=urlopen):
+              min_amp=DEFAULT_MIN_AMP, timeout=DEFAULT_TIMEOUT,
+              opener=urlopen):
     """Fetch one reading.
 
     Returns the laser report, or None if the wavemeter answered but has no
@@ -58,7 +68,7 @@ def read_once(base_url, setpoint, search_range, use_raw=DEFAULT_USE_RAW,
     those apart, because "no answer" says nothing about the laser whereas "no
     such frequency" says the laser is not where it should be.
     """
-    url = build_url(base_url, setpoint, search_range, use_raw)
+    url = build_url(base_url, setpoint, search_range, use_raw, min_amp)
 
     try:
         response = opener(url, timeout=timeout)
@@ -100,12 +110,14 @@ class WavemeterMonitor:
     """
 
     def __init__(self, base_url, setpoint, search_range,
-                 use_raw=DEFAULT_USE_RAW, poll_interval=1.0,
-                 timeout=DEFAULT_TIMEOUT, reader=read_once):
+                 use_raw=DEFAULT_USE_RAW, min_amp=DEFAULT_MIN_AMP,
+                 poll_interval=1.0, timeout=DEFAULT_TIMEOUT,
+                 reader=read_once):
         self.base_url = base_url
         self.setpoint = setpoint
         self.search_range = search_range
         self.use_raw = use_raw
+        self.min_amp = min_amp
         self.poll_interval = poll_interval
         self.timeout = timeout
         self._reader = reader
@@ -138,7 +150,8 @@ class WavemeterMonitor:
         try:
             reading = self._reader(
                 self.base_url, self.setpoint, self.search_range,
-                use_raw=self.use_raw, timeout=self.timeout
+                use_raw=self.use_raw, min_amp=self.min_amp,
+                timeout=self.timeout
             )
         except WavemeterError as error:
             with self._lock:
