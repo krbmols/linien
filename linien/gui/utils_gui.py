@@ -1,6 +1,6 @@
 import os
 from PyQt5.QtWidgets import QSlider, QCheckBox, QSpinBox, QDoubleSpinBox, \
-    QTabWidget, QRadioButton, QComboBox
+    QTabWidget, QRadioButton, QComboBox, QLineEdit
 from pyqtgraph.Qt import QtGui
 
 
@@ -24,6 +24,8 @@ def param2ui(parameter, element, process_value=lambda x: x):
             element.setChecked(value)
         elif isinstance(element, (QTabWidget, QComboBox)):
             element.setCurrentIndex(int(value))
+        elif isinstance(element, QLineEdit):
+            element.setText(str(value))
         else:
             raise Exception('unsupported element type %s' % type(element))
 

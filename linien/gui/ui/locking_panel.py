@@ -39,6 +39,32 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
         self.ids.selectLineToRelock.clicked.connect(self.start_relock_selection)
         self.ids.abortRelockSelection.clicked.connect(self.stop_relock_selection)
 
+        # Wavemeter lock tab
+        self.ids.selectLineToWavemeterLock.clicked.connect(
+            self.start_wavemeter_lock_selection)
+        self.ids.abortWavemeterSelection.clicked.connect(
+            self.stop_wavemeter_lock_selection)
+        self.ids.wavemeter_test_button.clicked.connect(self.test_wavemeter)
+
+        self.ids.wavemeter_url.editingFinished.connect(self.wavemeter_url_changed)
+        for name in ('wavemeter_setpoint', 'wavemeter_range',
+                     'wavemeter_search_range', 'wavemeter_handoff_window',
+                     'wavemeter_poll_interval', 'wavemeter_max_out_of_range',
+                     'wavemeter_steering_ramp_amplitude',
+                     'wavemeter_settle_time'):
+            element = getattr(self.ids, name)
+            element.setKeyboardTracking(False)
+            element.valueChanged.connect(
+                lambda value, name=name: self.wavemeter_value_changed(name, value)
+            )
+
+        self.ids.wavemeter_use_raw_checkbox.stateChanged.connect(
+            self.wavemeter_use_raw_changed)
+        self.ids.watch_wavemeter_checkbox.stateChanged.connect(
+            self.watch_wavemeter_changed)
+        self.ids.autoOffsetCheckbox_wavemeter.stateChanged.connect(
+            self.wavemeter_auto_offset_changed)
+
         # Manual lock
         self.ids.manualLockButton.clicked.connect(self.start_manual_lock)
 
@@ -101,6 +127,43 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
         )
         param2ui(params.relock_determine_offset, self.ids.autoOffsetCheckbox_relock)
 
+        # Wavemeter lock parameters
+        for name in ('wavemeter_url', 'wavemeter_setpoint', 'wavemeter_range',
+                     'wavemeter_search_range', 'wavemeter_handoff_window',
+                     'wavemeter_poll_interval', 'wavemeter_max_out_of_range',
+                     'wavemeter_steering_ramp_amplitude',
+                     'wavemeter_settle_time'):
+            param2ui(getattr(params, name), getattr(self.ids, name))
+
+        param2ui(params.wavemeter_use_raw, self.ids.wavemeter_use_raw_checkbox)
+        param2ui(params.watch_wavemeter_lock, self.ids.watch_wavemeter_checkbox)
+        param2ui(params.wavemeter_lock_determine_offset,
+                 self.ids.autoOffsetCheckbox_wavemeter)
+
+        def wavemeter_reading_changed(*_):
+            if params.wavemeter_stale.value:
+                colour = '#d40000'
+            elif abs(params.wavemeter_detuning.value) <= params.wavemeter_range.value:
+                colour = '#00aa00'
+            else:
+                colour = '#d47500'
+
+            status = params.wavemeter_status.value or 'not polled yet'
+            self.ids.wavemeter_reading_label.setStyleSheet('color: ' + colour)
+            self.ids.wavemeter_reading_label.setText(
+                '%.3f GHz  \u2014  %s' % (params.wavemeter_frequency.value, status)
+            )
+
+        for param in (params.wavemeter_frequency, params.wavemeter_detuning,
+                      params.wavemeter_status, params.wavemeter_stale):
+            param.on_change(wavemeter_reading_changed)
+
+        def wavemeter_selection_status_changed(value):
+            self.ids.wavemeter_activated.setVisible(value)
+            self.ids.wavemeter_not_activated.setVisible(not value)
+        params.wavemeter_lock_selection.on_change(
+            wavemeter_selection_status_changed)
+
         # Handle the tab
         def _sync_tab_from_params(*_):
             # Decide the index from parameters
@@ -108,8 +171,10 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
                 idx = 0  # Auto
             elif self.parameters.relock_automatic_mode.value:
                 idx = 1  # Relock
+            elif self.parameters.wavemeter_lock_automatic_mode.value:
+                idx = 2  # Wavemeter
             else:
-                idx = 2  # Manual
+                idx = 3  # Manual
 
             # Avoid re-entrant fights by only updating when different
             if self.ids.lock_control_container.currentIndex() != idx:
@@ -118,6 +183,7 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
         # Subscribe to param changes
         self.parameters.automatic_mode.on_change(_sync_tab_from_params)
         self.parameters.relock_automatic_mode.on_change(_sync_tab_from_params)
+        self.parameters.wavemeter_lock_automatic_mode.on_change(_sync_tab_from_params)
 
         #Slow PID
         param2ui(params.pid_on_slow_strength, self.ids.pid_on_slow_strength)
@@ -130,24 +196,26 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
             task = params.task.value
             al_failed = params.autolock_failed.value
             rl_failed = params.relock_failed.value
-            task_running = (task is not None) and (not al_failed) and (not rl_failed)
+            wm_failed = params.wavemeter_lock_failed.value
+            task_running = (task is not None) and (not al_failed) \
+                and (not rl_failed) and (not wm_failed)
 
             if locked or task_running:
                 self.ids.lock_control_container.hide()
             else:
                 self.ids.lock_control_container.show()
 
-            if al_failed:
-                self.ids.lock_failed.setVisible(al_failed)
-            elif rl_failed:
-                self.ids.lock_failed.setVisible(rl_failed)
-            else:
-                self.ids.lock_failed.setVisible(False)
+            self.ids.lock_failed.setVisible(al_failed or rl_failed or wm_failed)
 
         for param in (params.lock, params.autolock_approaching, params.autolock_watching,
                       params.autolock_failed, params.autolock_locked, 
                       params.relock_approaching, params.relock_watching,
-                      params.relock_failed, params.relock_locked):
+                      params.relock_failed, params.relock_locked,
+                      params.wavemeter_lock_steering,
+                      params.wavemeter_lock_approaching,
+                      params.wavemeter_lock_watching,
+                      params.wavemeter_lock_failed,
+                      params.wavemeter_lock_locked):
             param.on_change(lock_status_changed)
 
         param2ui(params.target_slope_rising, self.ids.button_slope_rising)
@@ -183,6 +251,7 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
     def lock_mode_changed(self, idx):
         self.parameters.automatic_mode.value = idx == 0
         self.parameters.relock_automatic_mode.value = idx == 1
+        self.parameters.wavemeter_lock_automatic_mode.value = idx == 2
 
     def start_manual_lock(self):
         self.control.pause_acquisition()
@@ -218,6 +287,7 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
     def reset_lock_failed(self):
         self.parameters.autolock_failed.value = False
         self.parameters.relock_failed.value = False
+        self.parameters.wavemeter_lock_failed.value = False
 
     # Relock tab interactions
     def watch_relock_changed(self):
@@ -234,3 +304,70 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
 
     def std_relock_threshold_changed(self):
         self.parameters.watch_relock_threshold.value = self.ids.STDthresholdbox_relock.value()
+
+    # Wavemeter lock tab interactions
+    def wavemeter_value_changed(self, name, value):
+        getattr(self.parameters, name).value = value
+
+    def wavemeter_url_changed(self):
+        self.parameters.wavemeter_url.value = self.ids.wavemeter_url.text().strip()
+
+    def wavemeter_use_raw_changed(self):
+        self.parameters.wavemeter_use_raw.value = \
+            bool(self.ids.wavemeter_use_raw_checkbox.checkState())
+
+    def watch_wavemeter_changed(self):
+        self.parameters.watch_wavemeter_lock.value = \
+            bool(self.ids.watch_wavemeter_checkbox.checkState())
+
+    def wavemeter_auto_offset_changed(self):
+        self.parameters.wavemeter_lock_determine_offset.value = \
+            int(self.ids.autoOffsetCheckbox_wavemeter.checkState())
+
+    def start_wavemeter_lock_selection(self):
+        self.parameters.wavemeter_lock_selection.value = True
+
+    def stop_wavemeter_lock_selection(self):
+        self.parameters.wavemeter_lock_selection.value = False
+
+    def test_wavemeter(self):
+        """Read the wavemeter once, from the GUI machine, and show the answer.
+
+        This is only a reachability check for the address as typed. The lock
+        itself polls from the RedPitaya, which may not be able to reach a host
+        this machine can.
+        """
+        from linien.server.wavemeter import read_once, WavemeterError
+
+        self.ids.wavemeter_reading_label.setStyleSheet('color: #888a85')
+        self.ids.wavemeter_reading_label.setText('testing...')
+        QtWidgets.QApplication.processEvents()
+
+        try:
+            reading = read_once(
+                self.ids.wavemeter_url.text(),
+                self.ids.wavemeter_setpoint.value(),
+                self.ids.wavemeter_search_range.value(),
+                use_raw=bool(self.ids.wavemeter_use_raw_checkbox.checkState())
+            )
+        except WavemeterError as error:
+            self.ids.wavemeter_reading_label.setStyleSheet('color: #d40000')
+            self.ids.wavemeter_reading_label.setText(str(error))
+            return
+
+        if reading is None:
+            self.ids.wavemeter_reading_label.setStyleSheet('color: #d47500')
+            self.ids.wavemeter_reading_label.setText(
+                'wavemeter reached, but it sees no laser within %.3f GHz of '
+                'the setpoint' % self.ids.wavemeter_search_range.value()
+            )
+            return
+
+        key = 'raw_median_GHz' \
+            if self.ids.wavemeter_use_raw_checkbox.checkState() else 'median_GHz'
+        self.ids.wavemeter_reading_label.setStyleSheet('color: #00aa00')
+        self.ids.wavemeter_reading_label.setText(
+            '%.3f GHz, %.1f MHz from setpoint (%s)'
+            % (reading.get(key, 0.0), reading['detuning_MHz'],
+               reading.get('used', 'unknown'))
+        )

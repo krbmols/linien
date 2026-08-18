@@ -8,7 +8,8 @@ ZOOM_STEP = 2
 class Approacher:
     def __init__(self, control, parameters, first_error_signal, target_zoom,
                  central_y, allow_ramp_speed_change=False,
-                 wait_time_between_current_corrections=None):
+                 wait_time_between_current_corrections=None,
+                 initial_ramp_amplitude=None):
         self.control = control
         self.parameters = parameters
         # central_y is the y coordinate between maximum and minimum of the
@@ -19,6 +20,12 @@ class Approacher:
         self.allow_ramp_speed_change = allow_ramp_speed_change
 
         self.wait_time_between_current_corrections = wait_time_between_current_corrections
+
+        # The amplitude the reference spectrum was recorded at, which sets the
+        # scale of the correlation shift.  It is inferred from the autolock and
+        # relock parameters when not given, so any mode that does not set one
+        # of those has to say what it used.
+        self.initial_ramp_amplitude = initial_ramp_amplitude
 
         self.central_y = central_y
 
@@ -38,7 +45,9 @@ class Approacher:
 
         error_signal = error_signal - self.central_y
 
-        if self.parameters.autolock_initial_ramp_amplitude.value != 1:
+        if self.initial_ramp_amplitude is not None:
+            initial_ramp_amplitude = self.initial_ramp_amplitude
+        elif self.parameters.autolock_initial_ramp_amplitude.value != 1:
             initial_ramp_amplitude = self.parameters.autolock_initial_ramp_amplitude.value
         else:
             initial_ramp_amplitude = self.parameters.relock_initial_ramp_amplitude.value

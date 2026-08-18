@@ -788,6 +788,212 @@
        </item>
       </layout>
      </widget>
+     <widget class="QWidget" name="wavemeter_mode">
+      <attribute name="title">
+       <string>Wavemeter</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_wavemeter">
+       <item>
+        <widget class="QWidget" name="wavemeter_not_activated" native="true">
+         <layout class="QVBoxLayout" name="verticalLayout_wavemeter_not_activated">
+          <property name="leftMargin"><number>0</number></property>
+          <property name="topMargin"><number>0</number></property>
+          <property name="rightMargin"><number>0</number></property>
+          <property name="bottomMargin"><number>0</number></property>
+          <item>
+           <widget class="QPushButton" name="selectLineToWavemeterLock">
+            <property name="minimumSize">
+             <size><width>0</width><height>50</height></size>
+            </property>
+            <property name="font">
+             <font><weight>75</weight><bold>true</bold></font>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background: #00aa00</string>
+            </property>
+            <property name="text">
+             <string>Select wavemeter lock target line</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QFormLayout" name="formLayout_wavemeter">
+        <item row="0" column="0">
+         <widget class="QLabel" name="label_wm_url">
+          <property name="text"><string>Wavemeter address</string></property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLineEdit" name="wavemeter_url">
+          <property name="placeholderText"><string>http://192.168.0.119:8050</string></property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="label_wm_setpoint">
+          <property name="text"><string>Setpoint (GHz)</string></property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QDoubleSpinBox" name="wavemeter_setpoint">
+          <property name="decimals"><number>3</number></property>
+          <property name="minimum"><double>0.000000</double></property>
+          <property name="maximum"><double>10000000.000000</double></property>
+          <property name="singleStep"><double>0.001000</double></property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="label_wm_range">
+          <property name="text"><string>Lock range (MHz)</string></property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QDoubleSpinBox" name="wavemeter_range">
+          <property name="decimals"><number>1</number></property>
+          <property name="minimum"><double>0.000000</double></property>
+          <property name="maximum"><double>1000000.000000</double></property>
+          <property name="singleStep"><double>1.000000</double></property>
+         </widget>
+        </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="label_wm_search">
+          <property name="text"><string>Search window (GHz)</string></property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="QDoubleSpinBox" name="wavemeter_search_range">
+          <property name="decimals"><number>3</number></property>
+          <property name="minimum"><double>0.001000</double></property>
+          <property name="maximum"><double>1000.000000</double></property>
+          <property name="singleStep"><double>0.100000</double></property>
+         </widget>
+        </item>
+        <item row="4" column="0">
+         <widget class="QLabel" name="label_wm_handoff">
+          <property name="text"><string>Hand over to line search within (GHz)</string></property>
+         </widget>
+        </item>
+        <item row="4" column="1">
+         <widget class="QDoubleSpinBox" name="wavemeter_handoff_window">
+          <property name="decimals"><number>3</number></property>
+          <property name="minimum"><double>0.001000</double></property>
+          <property name="maximum"><double>100.000000</double></property>
+          <property name="singleStep"><double>0.100000</double></property>
+         </widget>
+        </item>
+        <item row="5" column="0">
+         <widget class="QLabel" name="label_wm_poll">
+          <property name="text"><string>Poll interval (s)</string></property>
+         </widget>
+        </item>
+        <item row="5" column="1">
+         <widget class="QDoubleSpinBox" name="wavemeter_poll_interval">
+          <property name="decimals"><number>2</number></property>
+          <property name="minimum"><double>0.050000</double></property>
+          <property name="maximum"><double>60.000000</double></property>
+          <property name="singleStep"><double>0.100000</double></property>
+         </widget>
+        </item>
+        <item row="6" column="0">
+         <widget class="QLabel" name="label_wm_count">
+          <property name="text"><string>Readings out of range before relocking</string></property>
+         </widget>
+        </item>
+        <item row="6" column="1">
+         <widget class="QSpinBox" name="wavemeter_max_out_of_range">
+          <property name="minimum"><number>1</number></property>
+          <property name="maximum"><number>1000</number></property>
+         </widget>
+        </item>
+        <item row="7" column="0">
+         <widget class="QLabel" name="label_wm_steer_amp">
+          <property name="text"><string>Scan amplitude while steering (V)</string></property>
+         </widget>
+        </item>
+        <item row="7" column="1">
+         <widget class="QDoubleSpinBox" name="wavemeter_steering_ramp_amplitude">
+          <property name="decimals"><number>3</number></property>
+          <property name="minimum"><double>0.001000</double></property>
+          <property name="maximum"><double>1.000000</double></property>
+          <property name="singleStep"><double>0.010000</double></property>
+         </widget>
+        </item>
+        <item row="8" column="0">
+         <widget class="QLabel" name="label_wm_settle">
+          <property name="text"><string>Settle time after tuning (s)</string></property>
+         </widget>
+        </item>
+        <item row="8" column="1">
+         <widget class="QDoubleSpinBox" name="wavemeter_settle_time">
+          <property name="decimals"><number>2</number></property>
+          <property name="minimum"><double>0.000000</double></property>
+          <property name="maximum"><double>30.000000</double></property>
+          <property name="singleStep"><double>0.100000</double></property>
+         </widget>
+        </item>
+           </layout>
+          </item>
+         <item>
+          <widget class="QCheckBox" name="wavemeter_use_raw_checkbox">
+           <property name="text"><string>Use uncalibrated frequencies (required when locking the wavemeter\u2019s own calibration laser)</string></property>
+           <property name="checked"><bool>true</bool></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="watch_wavemeter_checkbox">
+           <property name="text"><string>Relock automatically when the frequency leaves the window</string></property>
+           <property name="checked"><bool>true</bool></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="autoOffsetCheckbox_wavemeter">
+           <property name="text"><string>Determine signal offset</string></property>
+           <property name="checked"><bool>true</bool></property>
+          </widget>
+         </item>
+          <item>
+           <widget class="QPushButton" name="wavemeter_test_button">
+            <property name="text"><string>Test connection</string></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="wavemeter_reading_label">
+            <property name="text"><string>Wavemeter: not polled yet</string></property>
+            <property name="wordWrap"><bool>true</bool></property>
+            <property name="alignment"><set>Qt::AlignCenter</set></property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QWidget" name="wavemeter_activated" native="true">
+         <layout class="QVBoxLayout" name="verticalLayout_wavemeter_activated">
+          <property name="leftMargin"><number>0</number></property>
+          <property name="topMargin"><number>0</number></property>
+          <property name="rightMargin"><number>0</number></property>
+          <property name="bottomMargin"><number>0</number></property>
+          <item>
+           <widget class="QLabel" name="label_wavemeter_instruction">
+            <property name="text">
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:14pt; font-weight:600;&quot;&gt;Click and drag over the line you want to lock to&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+            </property>
+            <property name="alignment"><set>Qt::AlignCenter</set></property>
+            <property name="wordWrap"><bool>true</bool></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="abortWavemeterSelection">
+            <property name="styleSheet">
+             <string notr="true">background-color: #d40000;</string>
+            </property>
+            <property name="text"><string>Abort</string></property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
      <widget class="QWidget" name="manual_mode">
       <attribute name="title">
        <string>Manual</string>

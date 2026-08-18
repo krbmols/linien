@@ -1,0 +1,173 @@
+"""Reading laser frequencies from the wavemeter web server.
+
+The wavemeter runs a Dash app on the lab network that exposes the most recent
+reading of each laser at ``/api/latest``.  This module is the RedPitaya side of
+that link: a background thread polls the endpoint so that the acquisition
+callback -- which drives the lock -- never blocks on a socket, and a lock loop
+reads whatever the thread last managed to fetch.
+
+Only the standard library is used, so nothing has to be installed on the
+RedPitaya beyond what linien already needs.
+"""
+
+import json
+import threading
+from time import time
+from urllib.request import urlopen
+
+# The wavemeter applies a calibration correction derived from one reference
+# laser.  If the laser being locked *is* that reference, the correction
+# subtracts its drift back off and the lock would never see it move, so ask for
+# uncalibrated frequencies by default.
+DEFAULT_USE_RAW = True
+
+DEFAULT_TIMEOUT = 2.0
+
+ENDPOINT = '/api/latest'
+
+
+class WavemeterError(Exception):
+    """The wavemeter could not be reached, or answered with nonsense."""
+
+
+def build_url(base_url, setpoint, search_range, use_raw=DEFAULT_USE_RAW):
+    """Query URL for one laser.
+
+    ``base_url`` may be the server root ('http://192.168.0.119:8050') or the
+    endpoint itself; both are accepted so a pasted address just works.
+    """
+    base = base_url.strip().rstrip('/')
+    if not base:
+        raise WavemeterError('no wavemeter address configured')
+    if not base.endswith(ENDPOINT):
+        base += ENDPOINT
+
+    url = '%s?freq=%.6f&tol=%.6f' % (base, setpoint, search_range)
+    if use_raw:
+        url += '&raw=1'
+    return url
+
+
+def read_once(base_url, setpoint, search_range, use_raw=DEFAULT_USE_RAW,
+              timeout=DEFAULT_TIMEOUT, opener=urlopen):
+    """Fetch one reading.
+
+    Returns the laser report, or None if the wavemeter answered but has no
+    reading for this laser.  Raises WavemeterError if the wavemeter could not
+    be reached or its answer could not be understood -- the caller must tell
+    those apart, because "no answer" says nothing about the laser whereas "no
+    such frequency" says the laser is not where it should be.
+    """
+    url = build_url(base_url, setpoint, search_range, use_raw)
+
+    try:
+        response = opener(url, timeout=timeout)
+        try:
+            payload = json.loads(response.read().decode('utf-8'))
+        finally:
+            close = getattr(response, 'close', None)
+            if close is not None:
+                close()
+    except OSError as error:
+        # URLError, HTTPError, socket timeouts and refused connections are all
+        # OSError; catching the base class keeps every network failure inside
+        # WavemeterError instead of leaking out into the acquisition callback.
+        raise WavemeterError('cannot reach %s: %s' % (url, error))
+    except ValueError as error:
+        raise WavemeterError('bad response from %s: %s' % (url, error))
+
+    if not isinstance(payload, dict):
+        raise WavemeterError('unexpected response from %s' % url)
+
+    if not payload.get('found'):
+        return None
+
+    laser = payload.get('laser')
+    if not isinstance(laser, dict) or 'detuning_MHz' not in laser:
+        raise WavemeterError('response from %s has no reading in it' % url)
+
+    return laser
+
+
+class WavemeterMonitor:
+    """Polls one laser in the background and hands out the latest answer.
+
+    The lock reads :meth:`latest` from the acquisition callback, so the poll
+    must not happen there: an unreachable wavemeter would stall acquisition for
+    the whole socket timeout on every attempt.  The thread never touches
+    linien parameters -- it only fills a slot that the callback drains -- so
+    parameter updates stay on the thread that owns them.
+    """
+
+    def __init__(self, base_url, setpoint, search_range,
+                 use_raw=DEFAULT_USE_RAW, poll_interval=1.0,
+                 timeout=DEFAULT_TIMEOUT, reader=read_once):
+        self.base_url = base_url
+        self.setpoint = setpoint
+        self.search_range = search_range
+        self.use_raw = use_raw
+        self.poll_interval = poll_interval
+        self.timeout = timeout
+        self._reader = reader
+
+        self._lock = threading.Lock()
+        self._reading = None        # last laser report, or None
+        self._error = None          # last WavemeterError message, or None
+        self._time = None           # when that answer arrived
+        self._reachable = False     # did the last attempt get an answer at all
+
+        self._stop = threading.Event()
+        self._thread = None
+
+    def start(self):
+        if self._thread is not None:
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run)
+        self._thread.daemon = True
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        thread, self._thread = self._thread, None
+        if thread is not None:
+            thread.join(timeout=self.timeout + self.poll_interval + 1)
+
+    def poll(self):
+        """One fetch, storing whatever came back.  Used by the thread and tests."""
+        try:
+            reading = self._reader(
+                self.base_url, self.setpoint, self.search_range,
+                use_raw=self.use_raw, timeout=self.timeout
+            )
+        except WavemeterError as error:
+            with self._lock:
+                self._reading = None
+                self._error = str(error)
+                self._reachable = False
+                self._time = time()
+            return
+
+        with self._lock:
+            self._reading = reading
+            self._error = None
+            self._reachable = True
+            self._time = time()
+
+    def _run(self):
+        while not self._stop.is_set():
+            self.poll()
+            # Event.wait doubles as the sleep, so stop() is not held up by a
+            # poll interval.
+            self._stop.wait(self.poll_interval)
+
+    def latest(self):
+        """(reading, error, reachable, age_s).
+
+        ``reading`` is None when the wavemeter has no measurement for this
+        laser; ``error`` is set instead when it could not be reached at all.
+        ``age_s`` is None until the first answer arrives.
+        """
+        with self._lock:
+            age = None if self._time is None else time() - self._time
+            return self._reading, self._error, self._reachable, age

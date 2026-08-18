@@ -12,6 +12,7 @@ from random import random
 
 from autolock import Autolock
 from relock import Relock
+from wavemeter_lock import WavemeterLock
 from parameters import Parameters
 
 from linien.config import DEFAULT_SERVER_PORT
@@ -123,7 +124,8 @@ class RedPitayaControlService(BaseService):
     def task_running(self):
         return self.parameters.autolock_running.value or \
             self.parameters.optimization_running.value or \
-            self.parameters.relock_running.value
+            self.parameters.relock_running.value or \
+            self.parameters.wavemeter_lock_running.value
 
 
     def exposed_start_autolock(self, x0, x1, spectrum, auto_offset=True):
@@ -148,6 +150,21 @@ class RedPitayaControlService(BaseService):
             self.parameters.task.value = relock
             relock.run(x0, x1, spectrum, should_watch_relock=start_watching,
                          auto_offset=auto_offset)
+
+    def exposed_start_wavemeter_lock(self, x0, x1, spectrum):
+        """Lock to the selected line, judged by the wavemeter.
+
+        A line is still selected as for the autolock and relock: the wavemeter
+        brings the laser near the setpoint, but the line itself is found in the
+        error signal.
+        """
+        spectrum = pickle.loads(spectrum)
+        auto_offset = self.parameters.wavemeter_lock_determine_offset.value
+
+        if not self.task_running():
+            wavemeter_lock = WavemeterLock(self, self.parameters)
+            self.parameters.task.value = wavemeter_lock
+            wavemeter_lock.run(x0, x1, spectrum, auto_offset=auto_offset)
 
     def exposed_start_optimization(self, x0, x1, spectrum):
         if not self.task_running():
@@ -244,6 +261,9 @@ class FakeRedPitayaControl(BaseService):
 
     def exposed_start_relock(self, x0, x1, spectrum):
         print('start relock', x0, x1)
+
+    def exposed_start_wavemeter_lock(self, x0, x1, spectrum):
+        print('start wavemeter lock', x0, x1)
 
     def exposed_start_optimization(self, x0, x1, spectrum):
         print('start optimization')

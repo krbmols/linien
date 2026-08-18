@@ -49,6 +49,12 @@ class Parameters(BaseParameters):
             'polarity_fast_out1', 'polarity_fast_out2',
             'polarity_analog_out0', 'autoscale_y', 'y_axis_limits',
             'check_lock', 'analog_out_1', 'analog_out_2', 'analog_out_3',
+            'wavemeter_url', 'wavemeter_setpoint', 'wavemeter_range',
+            'wavemeter_search_range', 'wavemeter_poll_interval',
+            'wavemeter_max_out_of_range', 'wavemeter_handoff_window',
+            'wavemeter_settle_time', 'wavemeter_steering_ramp_amplitude',
+            'wavemeter_use_raw', 'watch_wavemeter_lock',
+            'wavemeter_lock_determine_offset',
             'plot_line_width', 'plot_color_0', 'plot_color_1', 'plot_color_2',
             'plot_color_3', 'plot_line_opacity', 'plot_fill_opacity'
         )
@@ -296,6 +302,70 @@ class Parameters(BaseParameters):
         self.relock_initial_ramp_amplitude = Parameter(start=1)
         # Relock standard deviation, updated by relock so GUI can read
         self.relock_std_val = Parameter(start=0, min_=0, max_=1000000) #arbitrarily large number, much larger than max std
+
+        #           --------- WAVEMETER LOCK PARAMETERS ---------
+        # Settings for the lock that judges success from an absolute frequency
+        # read off the wavemeter web server rather than from the error signal.
+
+        # Root of the wavemeter server, or its /api/latest endpoint directly.
+        # Point this at the LAN address rather than the public host name: the
+        # RedPitaya's CA bundle is old enough that TLS may not validate, and
+        # the reverse proxy only adds a hop to the lock loop.
+        self.wavemeter_url = Parameter(start='http://192.168.0.119:8050')
+        # Frequency the laser should sit at, in GHz.
+        self.wavemeter_setpoint = Parameter(start=309602.628)
+        # How far it may stray before it counts as unlocked, in MHz.
+        self.wavemeter_range = Parameter(start=50.0, min_=0)
+        # How wide a window to ask the wavemeter about, in GHz. It has to be
+        # wide enough to still find the laser once it has drifted, and narrow
+        # enough not to catch a neighbouring laser: a laser missing from a
+        # window this wide is taken to be off, not merely unmeasured.
+        self.wavemeter_search_range = Parameter(start=2.0, min_=0)
+        # Seconds between wavemeter requests.
+        self.wavemeter_poll_interval = Parameter(start=1.0, min_=0.05)
+        # Consecutive out-of-range readings before relocking. One bad reading
+        # is noise; five in a row is a laser that has left.
+        self.wavemeter_max_out_of_range = Parameter(start=5, min_=1)
+        # How close to the setpoint the wavemeter has to bring the laser, in
+        # GHz, before the correlation approacher takes over.
+        self.wavemeter_handoff_window = Parameter(start=1.0, min_=0)
+        # Seconds to let the laser settle after moving the ramp centre.
+        self.wavemeter_settle_time = Parameter(start=0.5, min_=0)
+        # Ramp amplitude used while steering on the wavemeter. A running ramp
+        # smears the measured frequency, so the scan is narrowed for this stage
+        # and restored before approaching.
+        self.wavemeter_steering_ramp_amplitude = Parameter(
+            start=0.05, min_=0.001, max_=1
+        )
+        # Ask for uncalibrated frequencies. Required when locking the laser
+        # that the wavemeter calibrates against, because the correction is
+        # built from that laser's own drift and would hide it.
+        self.wavemeter_use_raw = Parameter(start=True)
+        # Keep relocking after a drop, rather than stopping at the first one.
+        self.watch_wavemeter_lock = Parameter(start=True)
+
+        # these are used internally by the wavemeter lock
+        self.wavemeter_lock_automatic_mode = Parameter(start=False)
+        self.wavemeter_lock_selection = Parameter(start=False)
+        self.wavemeter_lock_running = Parameter(start=False)
+        self.wavemeter_lock_steering = Parameter(start=False)
+        self.wavemeter_lock_approaching = Parameter(start=False)
+        self.wavemeter_lock_watching = Parameter(start=False)
+        self.wavemeter_lock_failed = Parameter(start=False)
+        self.wavemeter_lock_locked = Parameter(start=False)
+        self.wavemeter_lock_retrying = Parameter(start=False)
+        self.wavemeter_lock_determine_offset = Parameter(start=True)
+        self.wavemeter_lock_initial_ramp_amplitude = Parameter(start=1)
+
+        # published by the lock so the GUI can show what it is seeing
+        self.wavemeter_frequency = Parameter(start=0.0)
+        self.wavemeter_detuning = Parameter(start=0.0)
+        self.wavemeter_age = Parameter(start=0.0)
+        self.wavemeter_slope = Parameter(start=0.0)
+        self.wavemeter_status = Parameter(start='')
+        # True while the wavemeter cannot be reached. The lock is held rather
+        # than dropped: a network fault says nothing about the laser.
+        self.wavemeter_stale = Parameter(start=False)
 
         #           --------- OPTIMIZATION PARAMETERS ---------
         # these are used internally by the optimization algorithm and usually

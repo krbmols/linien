@@ -34,8 +34,12 @@ class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
             rl_failed = params.relock_failed.value
             rl_running = params.relock_running.value
             rl_retrying = params.relock_retrying.value
+            wm_failed = params.wavemeter_lock_failed.value
+            wm_running = params.wavemeter_lock_running.value
+            wm_retrying = params.wavemeter_lock_retrying.value
 
-            if locked or (task is not None and not al_failed and not rl_failed):
+            if locked or (task is not None and not al_failed and not rl_failed
+                          and not wm_failed):
                 self.show()
                 
                 # REVERSED LOGIC: Deactivate TTL when locked and TTL is active
@@ -53,11 +57,16 @@ class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
             if task:
                 al_watching = params.autolock_watching.value
                 rl_watching = params.relock_watching.value
+                wm_watching = params.wavemeter_lock_watching.value
+                wm_steering = params.wavemeter_lock_steering.value
             else:
                 al_running = False
                 al_watching = False
                 rl_running = False
                 rl_watching = False
+                wm_running = False
+                wm_watching = False
+                wm_steering = False
 
             def set_text(text):
                 self.ids.lock_status.setText(text)
@@ -80,10 +89,31 @@ class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
                 else:
                     set_text('Trying again to relock...')
 
+            if wm_running:
+                detuning = params.wavemeter_detuning.value
+                if params.wavemeter_stale.value:
+                    # Holding the lock because the wavemeter went quiet, not
+                    # because the laser did anything.
+                    set_text('Wavemeter unreachable -- holding lock')
+                elif wm_watching:
+                    set_text('Locked to %.3f GHz! %+.1f MHz from setpoint'
+                             % (params.wavemeter_frequency.value, detuning))
+                elif wm_steering:
+                    set_text('Steering onto the setpoint (%+.1f MHz to go)...'
+                             % detuning)
+                elif wm_retrying:
+                    set_text('Trying again to reach the setpoint...')
+                else:
+                    set_text('Approaching the line...')
+
         for param in (params.lock, params.autolock_approaching, params.autolock_watching,
                 params.autolock_failed, params.autolock_locked, params.autolock_retrying,
                 params.relock_approaching, params.relock_watching, params.relock_failed, 
-                params.relock_locked, params.relock_retrying):
+                params.relock_locked, params.relock_retrying,
+                params.wavemeter_lock_steering, params.wavemeter_lock_approaching,
+                params.wavemeter_lock_watching, params.wavemeter_lock_failed,
+                params.wavemeter_lock_locked, params.wavemeter_lock_retrying,
+                params.wavemeter_detuning, params.wavemeter_stale):
             param.on_change(update_status)
             
         # Add callback for lock status

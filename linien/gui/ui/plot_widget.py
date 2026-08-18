@@ -148,53 +148,46 @@ class PlotWidget(pg.PlotWidget, CustomWidget):
 
         self.parameters.to_plot.on_change(self.replot)
 
-        def autolock_selection_changed(value):
-            if value:
-                self.parameters.optimization_selection.value = False
-                self.parameters.relock_selection.value = False
-                self.enable_area_selection(selectable_width=.75)
-            elif not (
-                self.parameters.optimization_selection.value
-                or self.parameters.relock_selection.value
-            ):
-                self.disable_area_selection()
-        self.parameters.autolock_selection.on_change(autolock_selection_changed)
+        # Only one of these may be selecting at a time: turning one on turns
+        # the others off, and the selection overlay stays up as long as any of
+        # them is still on.
+        selection_parameters = (
+            'autolock_selection', 'relock_selection',
+            'wavemeter_lock_selection', 'optimization_selection',
+        )
 
-        def relock_selection_changed(value):
-            if value:
-                # Turn off other modes
-                self.parameters.autolock_selection.value = False
-                self.parameters.optimization_selection.value = False
-                self.enable_area_selection(selectable_width=.75)
-            elif not (
-                self.parameters.autolock_selection.value
-                or self.parameters.optimization_selection.value
-            ):
-                self.disable_area_selection()
-        self.parameters.relock_selection.on_change(relock_selection_changed)
+        def make_selection_handler(own_name):
+            others = [
+                getattr(self.parameters, name)
+                for name in selection_parameters if name != own_name
+            ]
 
-        def optimization_selection_changed(value):
-            if value:
-                self.parameters.autolock_selection.value = False
-                self.parameters.relock_selection.value = False
-                self.enable_area_selection(selectable_width=.75)
-            elif not (
-                self.parameters.autolock_selection.value
-                or self.parameters.relock_selection.value
-            ):
-                self.disable_area_selection()
-        self.parameters.optimization_selection.on_change(optimization_selection_changed)
+            def selection_changed(value):
+                if value:
+                    for other in others:
+                        other.value = False
+                    self.enable_area_selection(selectable_width=.75)
+                elif not any(other.value for other in others):
+                    self.disable_area_selection()
+
+            return selection_changed
+
+        for name in selection_parameters:
+            getattr(self.parameters, name).on_change(make_selection_handler(name))
+
+        automatic_modes = (
+            'automatic_mode', 'relock_automatic_mode',
+            'wavemeter_lock_automatic_mode',
+        )
 
         def show_or_hide_crosshair(*_):
-            auto = self.parameters.automatic_mode.value
-            relock = getattr(self.parameters, "relock_automatic_mode", None)
-            relock = relock.value if relock is not None else False
             # Crosshair visible only in manual mode
-            self.crosshair.setVisible(not (auto or relock))
+            self.crosshair.setVisible(not any(
+                getattr(self.parameters, name).value for name in automatic_modes
+            ))
 
-        self.parameters.automatic_mode.on_change(show_or_hide_crosshair)
-        if hasattr(self.parameters, "relock_automatic_mode"):
-            self.parameters.relock_automatic_mode.on_change(show_or_hide_crosshair)
+        for name in automatic_modes:
+            getattr(self.parameters, name).on_change(show_or_hide_crosshair)
 
 
     def mouseMoveEvent(self, event):
@@ -301,6 +294,18 @@ class PlotWidget(pg.PlotWidget, CustomWidget):
                     mean_signal, target_slope_rising, target_zoom, rolled_error_signal = \
                         get_lock_point(last_combined_error_signal, *sorted((int(x0), int(x))))
                     self.relock_ref_spectrum = rolled_error_signal
+                elif self.parameters.wavemeter_lock_selection.value:
+                    last_combined_error_signal = self.last_plot_data[2]
+                    self.parameters.wavemeter_lock_selection.value = False
+
+                    self.control.start_wavemeter_lock(
+                        *sorted([x0, x]),
+                        pickle.dumps(last_combined_error_signal)
+                    )
+
+                    mean_signal, target_slope_rising, target_zoom, rolled_error_signal = \
+                        get_lock_point(last_combined_error_signal, *sorted((int(x0), int(x))))
+                    self.wavemeter_lock_ref_spectrum = rolled_error_signal
                 elif self.parameters.optimization_selection.value:
                     dual_channel = self.parameters.dual_channel.value
                     channel = self.parameters.optimization_channel.value
