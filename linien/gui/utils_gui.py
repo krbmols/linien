@@ -45,3 +45,14 @@ def color_to_hex(color):
         result += ('00' + hex(color[part_idx]).lstrip('0x'))[-2:]
 
     return '#' + result
+
+
+def server_has_wavemeter_lock(parameters):
+    """Whether the connected server knows about the wavemeter lock.
+
+    The client mimics whatever parameters the server exposes, so an out-of-date
+    Red Pitaya simply has none of them.  Both sides read the same VERSION file,
+    so linien's version check passes and the mismatch would otherwise surface
+    as an AttributeError from somewhere unrelated.
+    """
+    return hasattr(parameters, 'wavemeter_url')

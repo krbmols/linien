@@ -151,9 +151,12 @@ class PlotWidget(pg.PlotWidget, CustomWidget):
         # Only one of these may be selecting at a time: turning one on turns
         # the others off, and the selection overlay stays up as long as any of
         # them is still on.
-        selection_parameters = (
-            'autolock_selection', 'relock_selection',
-            'wavemeter_lock_selection', 'optimization_selection',
+        selection_parameters = tuple(
+            name for name in (
+                'autolock_selection', 'relock_selection',
+                'wavemeter_lock_selection', 'optimization_selection',
+            )
+            if hasattr(self.parameters, name)
         )
 
         def make_selection_handler(own_name):
@@ -175,9 +178,12 @@ class PlotWidget(pg.PlotWidget, CustomWidget):
         for name in selection_parameters:
             getattr(self.parameters, name).on_change(make_selection_handler(name))
 
-        automatic_modes = (
-            'automatic_mode', 'relock_automatic_mode',
-            'wavemeter_lock_automatic_mode',
+        automatic_modes = tuple(
+            name for name in (
+                'automatic_mode', 'relock_automatic_mode',
+                'wavemeter_lock_automatic_mode',
+            )
+            if hasattr(self.parameters, name)
         )
 
         def show_or_hide_crosshair(*_):

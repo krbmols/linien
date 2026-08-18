@@ -2,7 +2,7 @@ import numpy as np
 from PyQt5 import QtGui, QtWidgets, QtWidgets
 from PyQt5.QtCore import QTimer
 from linien.gui.widgets import CustomWidget
-from linien.gui.utils_gui import param2ui
+from linien.gui.utils_gui import param2ui, server_has_wavemeter_lock
 
 
 class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
@@ -25,6 +25,8 @@ class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
         params = self.app().parameters
         self.parameters = params
 
+        has_wavemeter = server_has_wavemeter_lock(params)
+
         def update_status(_):
             locked = params.lock.value
             task = params.task.value
@@ -34,9 +36,9 @@ class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
             rl_failed = params.relock_failed.value
             rl_running = params.relock_running.value
             rl_retrying = params.relock_retrying.value
-            wm_failed = params.wavemeter_lock_failed.value
-            wm_running = params.wavemeter_lock_running.value
-            wm_retrying = params.wavemeter_lock_retrying.value
+            wm_failed = has_wavemeter and params.wavemeter_lock_failed.value
+            wm_running = has_wavemeter and params.wavemeter_lock_running.value
+            wm_retrying = has_wavemeter and params.wavemeter_lock_retrying.value
 
             if locked or (task is not None and not al_failed and not rl_failed
                           and not wm_failed):
@@ -57,9 +59,10 @@ class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
             if task:
                 al_watching = params.autolock_watching.value
                 rl_watching = params.relock_watching.value
-                wm_watching = params.wavemeter_lock_watching.value
-                wm_steering = params.wavemeter_lock_steering.value
-                wm_confirming = params.wavemeter_lock_confirming.value
+                wm_watching = has_wavemeter and params.wavemeter_lock_watching.value
+                wm_steering = has_wavemeter and params.wavemeter_lock_steering.value
+                wm_confirming = has_wavemeter \
+                    and params.wavemeter_lock_confirming.value
             else:
                 al_running = False
                 al_watching = False
@@ -115,12 +118,18 @@ class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
                 params.autolock_failed, params.autolock_locked, params.autolock_retrying,
                 params.relock_approaching, params.relock_watching, params.relock_failed, 
                 params.relock_locked, params.relock_retrying,
-                params.wavemeter_lock_steering, params.wavemeter_lock_approaching,
-                params.wavemeter_lock_confirming,
-                params.wavemeter_lock_watching, params.wavemeter_lock_failed,
-                params.wavemeter_lock_locked, params.wavemeter_lock_retrying,
-                params.wavemeter_detuning, params.wavemeter_stale):
+                ):
             param.on_change(update_status)
+
+        if has_wavemeter:
+            for param in (
+                    params.wavemeter_lock_steering,
+                    params.wavemeter_lock_approaching,
+                    params.wavemeter_lock_confirming,
+                    params.wavemeter_lock_watching, params.wavemeter_lock_failed,
+                    params.wavemeter_lock_locked, params.wavemeter_lock_retrying,
+                    params.wavemeter_detuning, params.wavemeter_stale):
+                param.on_change(update_status)
             
         # Add callback for lock status
         # self.parameters.lock.on_change(self.on_lock_status_changed)

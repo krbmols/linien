@@ -128,43 +128,64 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
         )
         param2ui(params.relock_determine_offset, self.ids.autoOffsetCheckbox_relock)
 
-        # Wavemeter lock parameters
-        for name in ('wavemeter_url', 'wavemeter_setpoint', 'wavemeter_range',
-                     'wavemeter_search_range', 'wavemeter_handoff_window',
-                     'wavemeter_min_amp', 'wavemeter_poll_interval',
-                     'wavemeter_max_out_of_range',
-                     'wavemeter_steering_ramp_amplitude',
-                     'wavemeter_settle_time'):
-            param2ui(getattr(params, name), getattr(self.ids, name))
+        # An out-of-date Red Pitaya exposes none of the wavemeter parameters.
+        # Say so plainly and leave the other three modes working, rather than
+        # failing with an AttributeError that names neither cause nor cure.
+        self.has_wavemeter = server_has_wavemeter_lock(params)
 
-        param2ui(params.wavemeter_use_raw, self.ids.wavemeter_use_raw_checkbox)
-        param2ui(params.watch_wavemeter_lock, self.ids.watch_wavemeter_checkbox)
-        param2ui(params.wavemeter_lock_determine_offset,
-                 self.ids.autoOffsetCheckbox_wavemeter)
-
-        def wavemeter_reading_changed(*_):
-            if params.wavemeter_stale.value:
-                colour = '#d40000'
-            elif abs(params.wavemeter_detuning.value) <= params.wavemeter_range.value:
-                colour = '#00aa00'
-            else:
-                colour = '#d47500'
-
-            status = params.wavemeter_status.value or 'not polled yet'
-            self.ids.wavemeter_reading_label.setStyleSheet('color: ' + colour)
+        if not self.has_wavemeter:
+            container = self.ids.lock_control_container
+            index = container.indexOf(self.ids.wavemeter_mode)
+            if index != -1:
+                container.setTabEnabled(index, False)
+                container.setTabToolTip(
+                    index,
+                    'The Red Pitaya is running an older server without the '
+                    'wavemeter lock. Deploy it with install_relock_server.'
+                )
+            self.ids.wavemeter_reading_label.setStyleSheet('color: #d40000')
             self.ids.wavemeter_reading_label.setText(
-                '%.3f GHz  \u2014  %s' % (params.wavemeter_frequency.value, status)
+                'Red Pitaya server is out of date -- run install_relock_server '
+                'to deploy the wavemeter lock.'
             )
+        else:
+            # Wavemeter lock parameters
+            for name in ('wavemeter_url', 'wavemeter_setpoint', 'wavemeter_range',
+                         'wavemeter_search_range', 'wavemeter_handoff_window',
+                         'wavemeter_min_amp', 'wavemeter_poll_interval',
+                         'wavemeter_max_out_of_range',
+                         'wavemeter_steering_ramp_amplitude',
+                         'wavemeter_settle_time'):
+                param2ui(getattr(params, name), getattr(self.ids, name))
 
-        for param in (params.wavemeter_frequency, params.wavemeter_detuning,
-                      params.wavemeter_status, params.wavemeter_stale):
-            param.on_change(wavemeter_reading_changed)
+            param2ui(params.wavemeter_use_raw, self.ids.wavemeter_use_raw_checkbox)
+            param2ui(params.watch_wavemeter_lock, self.ids.watch_wavemeter_checkbox)
+            param2ui(params.wavemeter_lock_determine_offset,
+                     self.ids.autoOffsetCheckbox_wavemeter)
 
-        def wavemeter_selection_status_changed(value):
-            self.ids.wavemeter_activated.setVisible(value)
-            self.ids.wavemeter_not_activated.setVisible(not value)
-        params.wavemeter_lock_selection.on_change(
-            wavemeter_selection_status_changed)
+            def wavemeter_reading_changed(*_):
+                if params.wavemeter_stale.value:
+                    colour = '#d40000'
+                elif abs(params.wavemeter_detuning.value) <= params.wavemeter_range.value:
+                    colour = '#00aa00'
+                else:
+                    colour = '#d47500'
+
+                status = params.wavemeter_status.value or 'not polled yet'
+                self.ids.wavemeter_reading_label.setStyleSheet('color: ' + colour)
+                self.ids.wavemeter_reading_label.setText(
+                    '%.3f GHz  \u2014  %s' % (params.wavemeter_frequency.value, status)
+                )
+
+            for param in (params.wavemeter_frequency, params.wavemeter_detuning,
+                          params.wavemeter_status, params.wavemeter_stale):
+                param.on_change(wavemeter_reading_changed)
+
+            def wavemeter_selection_status_changed(value):
+                self.ids.wavemeter_activated.setVisible(value)
+                self.ids.wavemeter_not_activated.setVisible(not value)
+            params.wavemeter_lock_selection.on_change(
+                wavemeter_selection_status_changed)
 
         # Handle the tab
         def _sync_tab_from_params(*_):
