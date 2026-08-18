@@ -959,6 +959,12 @@
            </layout>
           </item>
          <item>
+          <widget class="QCheckBox" name="wavemeter_skip_line_search_checkbox">
+           <property name="text"><string>Engage as soon as the wavemeter settles (skip the line search)</string></property>
+           <property name="checked"><bool>false</bool></property>
+          </widget>
+         </item>
+         <item>
           <widget class="QCheckBox" name="wavemeter_use_raw_checkbox">
            <property name="text"><string>Use uncalibrated frequencies (required when locking the wavemeter\u2019s own calibration laser)</string></property>
            <property name="checked"><bool>true</bool></property>

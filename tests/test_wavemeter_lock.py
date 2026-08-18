@@ -548,6 +548,36 @@ check('waited for repeated confirmation',
       lock.settled_count >= 3 or parameters.wavemeter_lock_locked.value,
       '(settled after %d)' % lock.settled_count)
 
+print('the line search can be switched off entirely')
+parameters = make_parameters()
+parameters.wavemeter_skip_line_search.value = True
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.5)
+lock, control, monitor = start_lock(parameters, laser)
+check('engages once settled, without the line search',
+      feed_until(lock, parameters, laser,
+                 lambda: parameters.wavemeter_lock_confirming.value))
+check('TTL low', parameters.gpio_p_out.value == 0b00000000)
+check('the line search never ran',
+      lock.approacher is None and not parameters.wavemeter_lock_approaching.value)
+check('scan left narrow, not widened to hunt a line',
+      parameters.ramp_amplitude.value
+      == parameters.wavemeter_steering_ramp_amplitude.value,
+      '(got %s)' % parameters.ramp_amplitude.value)
+feed(lock, parameters, laser, 5)
+check('verified and locked', parameters.wavemeter_lock_locked.value)
+
+print('with the search off, a wrong frequency is still caught')
+parameters = make_parameters()
+parameters.wavemeter_skip_line_search.value = True
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.0)
+lock, control, monitor = start_lock(parameters, laser)
+feed_until(lock, parameters, laser,
+           lambda: parameters.wavemeter_lock_confirming.value)
+laser.offset_GHz = 3.0
+feed(lock, parameters, laser, 5)
+check('TTL released', parameters.gpio_p_out.value == 0b11111111)
+check('back to steering', parameters.wavemeter_lock_steering.value)
+
 print('a lock on the wrong line is released again')
 parameters = make_parameters()
 laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.0)

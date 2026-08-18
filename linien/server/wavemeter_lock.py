@@ -359,7 +359,20 @@ class WavemeterLock:
     # ------------------------------------------------------ stage: approach
 
     def _begin_approaching(self):
-        """Hand over to the correlation approacher used by the other modes."""
+        """Hand over to the correlation approacher used by the other modes.
+
+        Unless the search is switched off, in which case the wavemeter has
+        already said everything that is going to be said and the lockbox can
+        have the laser now.
+        """
+        if self.parameters.wavemeter_skip_line_search.value:
+            # The laser is sitting still at the setpoint under a narrow scan,
+            # which is the state the lockbox wants it in.  Widening the scan to
+            # hunt for a line that will not be used would only move it again.
+            print('wavemeter lock: settled at the setpoint, engaging directly')
+            self.parameters.wavemeter_lock_steering.value = False
+            return self._lock()
+
         print('wavemeter lock: settled at the setpoint, approaching the line')
         self.parameters.wavemeter_lock_steering.value = False
         self.parameters.wavemeter_lock_approaching.value = True

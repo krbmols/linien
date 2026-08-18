@@ -63,6 +63,8 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
                 lambda value, name=name: self.wavemeter_value_changed(name, value)
             )
 
+        self.ids.wavemeter_skip_line_search_checkbox.stateChanged.connect(
+            self.wavemeter_skip_line_search_changed)
         self.ids.wavemeter_use_raw_checkbox.stateChanged.connect(
             self.wavemeter_use_raw_changed)
         self.ids.watch_wavemeter_checkbox.stateChanged.connect(
@@ -163,6 +165,8 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
                          'wavemeter_lock_settle_time'):
                 param2ui(getattr(params, name), getattr(self.ids, name))
 
+            param2ui(params.wavemeter_skip_line_search,
+                     self.ids.wavemeter_skip_line_search_checkbox)
             param2ui(params.wavemeter_use_raw, self.ids.wavemeter_use_raw_checkbox)
             param2ui(params.watch_wavemeter_lock, self.ids.watch_wavemeter_checkbox)
             param2ui(params.wavemeter_lock_determine_offset,
@@ -351,6 +355,12 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
         if not self.has_wavemeter:
             return
         self.parameters.wavemeter_url.value = self.ids.wavemeter_url.text().strip()
+
+    def wavemeter_skip_line_search_changed(self):
+        if not self.has_wavemeter:
+            return
+        self.parameters.wavemeter_skip_line_search.value = \
+            bool(self.ids.wavemeter_skip_line_search_checkbox.checkState())
 
     def wavemeter_use_raw_changed(self):
         if not self.has_wavemeter:

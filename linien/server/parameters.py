@@ -56,6 +56,7 @@ class Parameters(BaseParameters):
             'wavemeter_settle_time', 'wavemeter_lock_settle_time',
             'wavemeter_steering_ramp_amplitude',
             'wavemeter_use_raw', 'watch_wavemeter_lock',
+            'wavemeter_skip_line_search',
             'wavemeter_lock_determine_offset',
             'plot_line_width', 'plot_color_0', 'plot_color_1', 'plot_color_2',
             'plot_color_3', 'plot_line_opacity', 'plot_fill_opacity'
@@ -364,6 +365,12 @@ class Parameters(BaseParameters):
         # that the wavemeter calibrates against, because the correction is
         # built from that laser's own drift and would hide it.
         self.wavemeter_use_raw = Parameter(start=True)
+        # Engage the moment the wavemeter says the laser has settled, without
+        # running the correlation line search at all.  The search exists to
+        # place the laser on a specific feature, which costs a widened scan and
+        # a walk of the ramp centre; where the wavemeter alone is precise
+        # enough to hand over, that is motion for nothing.
+        self.wavemeter_skip_line_search = Parameter(start=False)
         # Keep relocking after a drop, rather than stopping at the first one.
         self.watch_wavemeter_lock = Parameter(start=True)
 
