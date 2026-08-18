@@ -182,6 +182,7 @@ def make_parameters():
     parameters.wavemeter_range.value = 100.0         # MHz
     parameters.wavemeter_search_range.value = 20.0   # GHz
     parameters.wavemeter_handoff_window.value = 200.0  # MHz
+    parameters.wavemeter_settled_within.value = 20.0   # MHz
     parameters.wavemeter_settle_time.value = 0.0
     parameters.wavemeter_lock_settle_time.value = 0.0
     parameters.ramp_amplitude.value = 1
@@ -534,6 +535,36 @@ check('the laser did pass through the window', inside_seen > 0,
 check('did not hand over while moving',
       not parameters.wavemeter_lock_approaching.value,
       '(handed over after %d readings inside)' % inside_seen)
+
+print('a laser that never sits perfectly still still gets locked')
+# The real complaint: a free-running laser wanders, and a settle threshold
+# tighter than that wander means it is never handed over at all.
+parameters = make_parameters()
+parameters.wavemeter_skip_line_search.value = True
+parameters.wavemeter_settled_within.value = 5.0     # tighter than the wander
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.04,
+                  drift_per_read_GHz=0.02)          # 20 MHz of wander
+lock, control, monitor = start_lock(parameters, laser)
+for _ in range(30):
+    feed(lock, parameters, laser, 1)
+check('too tight a threshold does block it',
+      not parameters.wavemeter_lock_locked.value,
+      '(locked anyway, so this test proves nothing)')
+check('and says so, with the number to use',
+      'waiting for it to settle' in parameters.wavemeter_status.value
+      and 'moved' in parameters.wavemeter_status.value,
+      '(status: %s)' % parameters.wavemeter_status.value)
+
+parameters = make_parameters()
+parameters.wavemeter_skip_line_search.value = True
+parameters.wavemeter_settled_within.value = 50.0    # above the wander
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.04,
+                  drift_per_read_GHz=0.02)
+lock, control, monitor = start_lock(parameters, laser)
+check('a threshold above the wander engages',
+      feed_until(lock, parameters, laser,
+                 lambda: parameters.gpio_p_out.value == 0b00000000),
+      '(status: %s)' % parameters.wavemeter_status.value)
 
 print('a settled laser does hand off')
 parameters = make_parameters()

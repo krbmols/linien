@@ -104,8 +104,12 @@ class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
                     set_text('Locked to %.3f GHz! %+.1f MHz from setpoint'
                              % (params.wavemeter_frequency.value, detuning))
                 elif wm_steering:
-                    set_text('Steering onto the setpoint (%+.1f MHz to go)...'
-                             % detuning)
+                    # The server says whether it is still correcting or waiting
+                    # for the laser to hold still, which is the difference
+                    # between "nearly there" and "will never get there".
+                    set_text(params.wavemeter_status.value
+                             or ('Steering onto the setpoint (%+.1f MHz to go)'
+                                 % detuning))
                 elif wm_confirming:
                     set_text('Engaged -- checking where the laser landed...')
                 elif wm_retrying:
@@ -127,7 +131,8 @@ class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
                     params.wavemeter_lock_confirming,
                     params.wavemeter_lock_watching, params.wavemeter_lock_failed,
                     params.wavemeter_lock_locked, params.wavemeter_lock_retrying,
-                    params.wavemeter_detuning, params.wavemeter_stale):
+                    params.wavemeter_detuning, params.wavemeter_stale,
+                params.wavemeter_status):
                 param.on_change(update_status)
             
         # Add callback for lock status

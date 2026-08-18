@@ -56,7 +56,8 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
                      'wavemeter_min_amp', 'wavemeter_poll_interval',
                      'wavemeter_max_out_of_range',
                      'wavemeter_steering_ramp_amplitude',
-                     'wavemeter_settle_time', 'wavemeter_lock_settle_time'):
+                     'wavemeter_settled_within', 'wavemeter_settle_time',
+                     'wavemeter_lock_settle_time'):
             element = getattr(self.ids, name)
             element.setKeyboardTracking(False)
             element.valueChanged.connect(
@@ -161,6 +162,7 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
                          'wavemeter_min_amp', 'wavemeter_poll_interval',
                          'wavemeter_max_out_of_range',
                          'wavemeter_steering_ramp_amplitude',
+                         'wavemeter_settled_within',
                          'wavemeter_settle_time',
                          'wavemeter_lock_settle_time'):
                 param2ui(getattr(params, name), getattr(self.ids, name))

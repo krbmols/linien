@@ -65,10 +65,9 @@ HANDOFF_CONFIRMATIONS = 3
 # Being inside the window is not enough on its own either.  A laser drifting
 # slowly crosses the window over several readings and is inside for all of
 # them, while still sliding straight through.  So successive readings also have
-# to agree to within this fraction of the window before it counts as settled --
-# at the default 200 MHz window, 20 MHz of movement between readings, against
-# the ~1 MHz a laser sitting still actually shows.
-SETTLED_FRACTION = 0.1
+# to agree with each other, to within wavemeter_settled_within -- a property of
+# how quietly the laser sits while unlocked, and therefore something only the
+# person running it can know.
 
 # Give up on a stage rather than steering forever.
 STEERING_TIMEOUT_S = 120.0
@@ -283,14 +282,23 @@ class WavemeterLock:
 
         if abs(detuning_MHz) <= handoff_MHz:
             # Inside the window: stop correcting and watch whether it stays
-            # put.  Handing the line search a laser that is still moving is
-            # what sends this straight back to steering.
-            if moved_MHz is not None and moved_MHz <= handoff_MHz * SETTLED_FRACTION:
-                self.settled_count += 1
-                if self.settled_count >= HANDOFF_CONFIRMATIONS:
-                    return self._begin_approaching()
-            else:
-                self.settled_count = 0
+            # put.  Handing over a laser that is still moving is what sends
+            # this straight back to steering.
+            settled = (moved_MHz is not None
+                       and moved_MHz <= self.parameters.wavemeter_settled_within.value)
+            self.settled_count = self.settled_count + 1 if settled else 0
+
+            if self.settled_count >= HANDOFF_CONFIRMATIONS:
+                return self._begin_approaching()
+
+            # Say which of the two conditions is holding things up, so a laser
+            # parked in the window that never hands over is not a mystery.
+            self.parameters.wavemeter_status.value = (
+                'at %.1f MHz, waiting for it to settle (%d/%d, last moved '
+                '%s)' % (detuning_MHz, self.settled_count,
+                         HANDOFF_CONFIRMATIONS,
+                         'n/a' if moved_MHz is None else '%.1f MHz' % moved_MHz)
+            )
             return
 
         self.settled_count = 0

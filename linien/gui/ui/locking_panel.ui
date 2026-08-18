@@ -881,11 +881,24 @@
          </widget>
         </item>
         <item row="5" column="0">
+         <widget class="QLabel" name="label_wm_settled_within">
+          <property name="text"><string>Settled when readings agree within (MHz)</string></property>
+         </widget>
+        </item>
+        <item row="5" column="1">
+         <widget class="QDoubleSpinBox" name="wavemeter_settled_within">
+          <property name="decimals"><number>1</number></property>
+          <property name="minimum"><double>0.000000</double></property>
+          <property name="maximum"><double>100000.000000</double></property>
+          <property name="singleStep"><double>10.000000</double></property>
+         </widget>
+        </item>
+        <item row="6" column="0">
          <widget class="QLabel" name="label_wm_min_amp">
           <property name="text"><string>Discard readings dimmer than</string></property>
          </widget>
         </item>
-        <item row="5" column="1">
+        <item row="6" column="1">
          <widget class="QDoubleSpinBox" name="wavemeter_min_amp">
           <property name="decimals"><number>3</number></property>
           <property name="minimum"><double>0.000000</double></property>
@@ -893,12 +906,12 @@
           <property name="singleStep"><double>0.005000</double></property>
          </widget>
         </item>
-        <item row="6" column="0">
+        <item row="7" column="0">
          <widget class="QLabel" name="label_wm_poll">
           <property name="text"><string>Poll interval (s)</string></property>
          </widget>
         </item>
-        <item row="6" column="1">
+        <item row="7" column="1">
          <widget class="QDoubleSpinBox" name="wavemeter_poll_interval">
           <property name="decimals"><number>2</number></property>
           <property name="minimum"><double>0.050000</double></property>
@@ -906,23 +919,23 @@
           <property name="singleStep"><double>0.100000</double></property>
          </widget>
         </item>
-        <item row="7" column="0">
+        <item row="8" column="0">
          <widget class="QLabel" name="label_wm_count">
           <property name="text"><string>Readings out of range before relocking</string></property>
          </widget>
         </item>
-        <item row="7" column="1">
+        <item row="8" column="1">
          <widget class="QSpinBox" name="wavemeter_max_out_of_range">
           <property name="minimum"><number>1</number></property>
           <property name="maximum"><number>1000</number></property>
          </widget>
         </item>
-        <item row="8" column="0">
+        <item row="9" column="0">
          <widget class="QLabel" name="label_wm_steer_amp">
           <property name="text"><string>Scan amplitude while steering (V)</string></property>
          </widget>
         </item>
-        <item row="8" column="1">
+        <item row="9" column="1">
          <widget class="QDoubleSpinBox" name="wavemeter_steering_ramp_amplitude">
           <property name="decimals"><number>3</number></property>
           <property name="minimum"><double>0.001000</double></property>
@@ -930,12 +943,12 @@
           <property name="singleStep"><double>0.010000</double></property>
          </widget>
         </item>
-        <item row="9" column="0">
+        <item row="10" column="0">
          <widget class="QLabel" name="label_wm_lock_settle">
           <property name="text"><string>Give the lockbox to capture (s)</string></property>
          </widget>
         </item>
-        <item row="9" column="1">
+        <item row="10" column="1">
          <widget class="QDoubleSpinBox" name="wavemeter_lock_settle_time">
           <property name="decimals"><number>2</number></property>
           <property name="minimum"><double>0.000000</double></property>
@@ -943,12 +956,12 @@
           <property name="singleStep"><double>0.500000</double></property>
          </widget>
         </item>
-        <item row="10" column="0">
+        <item row="11" column="0">
          <widget class="QLabel" name="label_wm_settle">
           <property name="text"><string>Settle time after tuning (s)</string></property>
          </widget>
         </item>
-        <item row="10" column="1">
+        <item row="11" column="1">
          <widget class="QDoubleSpinBox" name="wavemeter_settle_time">
           <property name="decimals"><number>2</number></property>
           <property name="minimum"><double>0.000000</double></property>

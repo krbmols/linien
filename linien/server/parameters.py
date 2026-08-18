@@ -53,6 +53,7 @@ class Parameters(BaseParameters):
             'wavemeter_search_range', 'wavemeter_poll_interval',
             'wavemeter_min_amp',
             'wavemeter_max_out_of_range', 'wavemeter_handoff_window',
+            'wavemeter_settled_within',
             'wavemeter_settle_time', 'wavemeter_lock_settle_time',
             'wavemeter_steering_ramp_amplitude',
             'wavemeter_use_raw', 'watch_wavemeter_lock',
@@ -348,6 +349,12 @@ class Parameters(BaseParameters):
         # How close to the setpoint the wavemeter has to bring the laser, in
         # MHz, before the correlation approacher takes over the last stretch.
         self.wavemeter_handoff_window = Parameter(start=200.0, min_=0)
+        # How much consecutive readings may differ, in MHz, for the laser to
+        # count as having settled rather than still moving.  Set it above the
+        # laser's own wander while unlocked and below the speed at which it
+        # would cross the handoff window: too tight and a laser that never sits
+        # that still is never handed over at all.
+        self.wavemeter_settled_within = Parameter(start=50.0, min_=0)
         # Seconds to let the laser settle after moving the ramp centre.
         self.wavemeter_settle_time = Parameter(start=0.5, min_=0)
         # Seconds to give the lockbox to capture the laser after the TTL goes
