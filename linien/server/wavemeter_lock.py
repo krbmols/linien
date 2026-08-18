@@ -15,7 +15,11 @@ autolock and relock use -- takes it the rest of the way onto the line.
 
 As in `relock.py`, the PID is not what holds the laser: the lock is engaged and
 released through the GPIO TTL that drives the external lockbox, high while
-unlocked and scanning, low once locked.
+unlocked and scanning, low once locked.  The lockbox does the locking; all it
+needs is the TTL.  Handing it a laser sitting on the wrong feature is the one
+thing this must not do, so the TTL only goes low once the correlation stage has
+centred a line *and* the wavemeter independently agrees the laser is within the
+engage window.  Two sources have to concur before control leaves linien.
 """
 
 import pickle
@@ -87,6 +91,8 @@ class WavemeterLock:
             self.parameters.wavemeter_lock_locked.value = False
         if self.parameters.wavemeter_lock_watching.value:
             self.parameters.wavemeter_lock_watching.value = False
+        if self.parameters.wavemeter_lock_confirming.value:
+            self.parameters.wavemeter_lock_confirming.value = False
 
         self.out_of_range_count = 0
         self.slope_GHz_per_V = None
@@ -171,6 +177,9 @@ class WavemeterLock:
             if self.parameters.wavemeter_lock_steering.value:
                 return self.steer_towards_setpoint()
 
+            if self.parameters.wavemeter_lock_confirming.value:
+                return self.confirm_and_engage()
+
             plot_data = pickle.loads(plot_data)
             if plot_data is None:
                 return
@@ -216,6 +225,7 @@ class WavemeterLock:
         """
         self.parameters.wavemeter_lock_steering.value = True
         self.parameters.wavemeter_lock_approaching.value = False
+        self.parameters.wavemeter_lock_confirming.value = False
         self.stage_started_at = self._now()
 
         self.control.pause_acquisition()
@@ -241,7 +251,7 @@ class WavemeterLock:
         if self.slope_GHz_per_V is None:
             return self._calibrate_slope(detuning_MHz)
 
-        handoff_MHz = self.parameters.wavemeter_handoff_window.value * 1e3
+        handoff_MHz = self.parameters.wavemeter_handoff_window.value
         if abs(detuning_MHz) <= handoff_MHz:
             return self._begin_approaching()
 
@@ -337,7 +347,51 @@ class WavemeterLock:
             )
 
         if self.approacher.approach_line(combined_error_signal):
-            self._lock()
+            self._begin_confirming()
+
+    # ------------------------------------------------------- stage: confirm
+
+    def _begin_confirming(self):
+        """Line centred; now make the wavemeter agree before handing over."""
+        print('wavemeter lock: line centred, checking the frequency')
+        self.parameters.wavemeter_lock_approaching.value = False
+        self.parameters.wavemeter_lock_confirming.value = True
+        self.stage_started_at = self._now()
+
+        # Judge by a reading taken after the approach settled, not one already
+        # in flight while the centre was still moving.
+        self.ignore_readings_before = \
+            self._now() + self.parameters.wavemeter_settle_time.value
+
+    def confirm_and_engage(self):
+        """Engage only if the wavemeter agrees with the line the search found.
+
+        The correlation stage can centre a line perfectly and still have the
+        wrong one -- neighbouring features look alike, which is the whole
+        reason for measuring an absolute frequency. Checking here costs one
+        poll and is the difference between handing the lockbox the right line
+        and handing it a confident mistake.
+        """
+        outcome, reading, detuning_MHz = self._current_detuning()
+
+        if outcome != READING_OK:
+            # Never engage on no information.
+            if self._stage_timed_out():
+                return self.fail(
+                    'no wavemeter reading to confirm the line: '
+                    + (self.parameters.wavemeter_status.value or 'no answer')
+                )
+            return
+
+        if abs(detuning_MHz) <= self.parameters.wavemeter_range.value:
+            return self._lock()
+
+        reason = ('line found at %.1f MHz from the setpoint, outside the '
+                  '%.1f MHz engage window'
+                  % (detuning_MHz, self.parameters.wavemeter_range.value))
+        if self.parameters.watch_wavemeter_lock.value:
+            return self.relock(reason)
+        return self.fail(reason)
 
     def _lock(self):
         self.control.pause_acquisition()
@@ -345,6 +399,7 @@ class WavemeterLock:
         # Ramp speed does not matter once locked.
         self.parameters.ramp_speed.value = self.initial_ramp_speed
         self.parameters.wavemeter_lock_approaching.value = False
+        self.parameters.wavemeter_lock_confirming.value = False
 
         if self.auto_offset:
             # Only just before locking: doing it while approaching would upset
@@ -438,6 +493,7 @@ class WavemeterLock:
         self.parameters.wavemeter_lock_locked.value = False
         self.parameters.wavemeter_lock_steering.value = False
         self.parameters.wavemeter_lock_approaching.value = False
+        self.parameters.wavemeter_lock_confirming.value = False
         self.parameters.wavemeter_lock_watching.value = False
         self.parameters.fetch_quadratures.value = True
         self.remove_data_listener()

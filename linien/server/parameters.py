@@ -319,16 +319,18 @@ class Parameters(BaseParameters):
         # matter, only that the laser reads this number when it is where it
         # belongs.
         self.wavemeter_setpoint = Parameter(start=309602.7155)
-        # How far it may stray before it counts as unlocked, in MHz.  Tune this
-        # to the cavity: it has to be looser than the laser's ordinary wander,
-        # or a good lock is dropped, and tighter than the spacing that would
-        # let the laser settle somewhere it should not, or a slip goes unseen.
+        # How close to the setpoint the laser must be, in MHz, for the TTL to
+        # go low and hand the laser to the lockbox -- and, once locked, how far
+        # it may stray before the TTL goes back high.  Tune it to the cavity:
+        # looser than the laser's ordinary wander, or a good lock is dropped;
+        # tighter than the spacing that would let the laser settle somewhere it
+        # should not, or a slip goes unseen.
         self.wavemeter_range = Parameter(start=100.0, min_=0)
-        # How wide a window to ask the wavemeter about, in GHz. It has to be
-        # wide enough to still find the laser once it has drifted, and narrow
-        # enough not to catch a neighbouring laser: a laser missing from a
-        # window this wide is taken to be off, not merely unmeasured.
-        self.wavemeter_search_range = Parameter(start=2.0, min_=0)
+        # How wide a window to ask the wavemeter about, in GHz.  Wide enough to
+        # still find the laser once it has drifted a long way, narrow enough
+        # not to catch a neighbouring laser: a laser missing from a window this
+        # wide is taken to be off, not merely unmeasured.
+        self.wavemeter_search_range = Parameter(start=50.0, min_=0)
         # Saturation below which the wavemeter throws a reading away.  It is
         # not a noise floor but a trust floor: the wavemeter's own frequencies
         # stop being reliable below it, so a dim reading is worth less than no
@@ -342,8 +344,8 @@ class Parameters(BaseParameters):
         # is noise; five in a row is a laser that has left.
         self.wavemeter_max_out_of_range = Parameter(start=5, min_=1)
         # How close to the setpoint the wavemeter has to bring the laser, in
-        # GHz, before the correlation approacher takes over.
-        self.wavemeter_handoff_window = Parameter(start=1.0, min_=0)
+        # MHz, before the correlation approacher takes over the last stretch.
+        self.wavemeter_handoff_window = Parameter(start=200.0, min_=0)
         # Seconds to let the laser settle after moving the ramp centre.
         self.wavemeter_settle_time = Parameter(start=0.5, min_=0)
         # Ramp amplitude used while steering on the wavemeter. A running ramp
@@ -365,6 +367,7 @@ class Parameters(BaseParameters):
         self.wavemeter_lock_running = Parameter(start=False)
         self.wavemeter_lock_steering = Parameter(start=False)
         self.wavemeter_lock_approaching = Parameter(start=False)
+        self.wavemeter_lock_confirming = Parameter(start=False)
         self.wavemeter_lock_watching = Parameter(start=False)
         self.wavemeter_lock_failed = Parameter(start=False)
         self.wavemeter_lock_locked = Parameter(start=False)

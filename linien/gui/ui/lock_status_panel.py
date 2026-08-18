@@ -59,6 +59,7 @@ class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
                 rl_watching = params.relock_watching.value
                 wm_watching = params.wavemeter_lock_watching.value
                 wm_steering = params.wavemeter_lock_steering.value
+                wm_confirming = params.wavemeter_lock_confirming.value
             else:
                 al_running = False
                 al_watching = False
@@ -67,6 +68,7 @@ class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
                 wm_running = False
                 wm_watching = False
                 wm_steering = False
+                wm_confirming = False
 
             def set_text(text):
                 self.ids.lock_status.setText(text)
@@ -101,6 +103,9 @@ class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
                 elif wm_steering:
                     set_text('Steering onto the setpoint (%+.1f MHz to go)...'
                              % detuning)
+                elif wm_confirming:
+                    set_text('Line found -- checking the frequency before '
+                             'engaging the lockbox...')
                 elif wm_retrying:
                     set_text('Trying again to reach the setpoint...')
                 else:
@@ -111,6 +116,7 @@ class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
                 params.relock_approaching, params.relock_watching, params.relock_failed, 
                 params.relock_locked, params.relock_retrying,
                 params.wavemeter_lock_steering, params.wavemeter_lock_approaching,
+                params.wavemeter_lock_confirming,
                 params.wavemeter_lock_watching, params.wavemeter_lock_failed,
                 params.wavemeter_lock_locked, params.wavemeter_lock_retrying,
                 params.wavemeter_detuning, params.wavemeter_stale):

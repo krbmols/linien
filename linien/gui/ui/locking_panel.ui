@@ -830,12 +830,12 @@
         </item>
         <item row="1" column="0">
          <widget class="QLabel" name="label_wm_setpoint">
-          <property name="text"><string>Setpoint (GHz)</string></property>
+          <property name="text"><string>Raw setpoint (GHz)</string></property>
          </widget>
         </item>
         <item row="1" column="1">
          <widget class="QDoubleSpinBox" name="wavemeter_setpoint">
-          <property name="decimals"><number>3</number></property>
+          <property name="decimals"><number>4</number></property>
           <property name="minimum"><double>0.000000</double></property>
           <property name="maximum"><double>10000000.000000</double></property>
           <property name="singleStep"><double>0.001000</double></property>
@@ -843,7 +843,7 @@
         </item>
         <item row="2" column="0">
          <widget class="QLabel" name="label_wm_range">
-          <property name="text"><string>Lock range (MHz)</string></property>
+          <property name="text"><string>Engage TTL low within (MHz)</string></property>
          </widget>
         </item>
         <item row="2" column="1">
@@ -851,12 +851,12 @@
           <property name="decimals"><number>1</number></property>
           <property name="minimum"><double>0.000000</double></property>
           <property name="maximum"><double>1000000.000000</double></property>
-          <property name="singleStep"><double>1.000000</double></property>
+          <property name="singleStep"><double>10.000000</double></property>
          </widget>
         </item>
         <item row="3" column="0">
          <widget class="QLabel" name="label_wm_search">
-          <property name="text"><string>Search window (GHz)</string></property>
+          <property name="text"><string>Search for the laser within (GHz)</string></property>
          </widget>
         </item>
         <item row="3" column="1">
@@ -864,20 +864,20 @@
           <property name="decimals"><number>3</number></property>
           <property name="minimum"><double>0.001000</double></property>
           <property name="maximum"><double>1000.000000</double></property>
-          <property name="singleStep"><double>0.100000</double></property>
+          <property name="singleStep"><double>1.000000</double></property>
          </widget>
         </item>
         <item row="4" column="0">
          <widget class="QLabel" name="label_wm_handoff">
-          <property name="text"><string>Hand over to line search within (GHz)</string></property>
+          <property name="text"><string>Hand over to line search within (MHz)</string></property>
          </widget>
         </item>
         <item row="4" column="1">
          <widget class="QDoubleSpinBox" name="wavemeter_handoff_window">
-          <property name="decimals"><number>3</number></property>
-          <property name="minimum"><double>0.001000</double></property>
-          <property name="maximum"><double>100.000000</double></property>
-          <property name="singleStep"><double>0.100000</double></property>
+          <property name="decimals"><number>1</number></property>
+          <property name="minimum"><double>1.000000</double></property>
+          <property name="maximum"><double>100000.000000</double></property>
+          <property name="singleStep"><double>10.000000</double></property>
          </widget>
         </item>
         <item row="5" column="0">

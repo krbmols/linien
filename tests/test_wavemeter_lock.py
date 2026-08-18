@@ -174,9 +174,9 @@ class StubMonitor:
 def make_parameters():
     parameters = Parameters()
     parameters.wavemeter_setpoint.value = SETPOINT
-    parameters.wavemeter_range.value = 50.0          # MHz
+    parameters.wavemeter_range.value = 100.0         # MHz
     parameters.wavemeter_search_range.value = 20.0   # GHz
-    parameters.wavemeter_handoff_window.value = 1.0  # GHz
+    parameters.wavemeter_handoff_window.value = 200.0  # MHz
     parameters.wavemeter_settle_time.value = 0.0
     parameters.ramp_amplitude.value = 1
     parameters.center.value = 0
@@ -406,7 +406,7 @@ check('stays locked while on setpoint',
       and lock.out_of_range_count == 0)
 
 print('a drift out of range triggers a relock')
-laser.offset_GHz = 0.5  # 500 MHz, well outside the 50 MHz window
+laser.offset_GHz = 0.5  # 500 MHz, well outside the 100 MHz window
 feed(lock, parameters, laser, parameters.wavemeter_max_out_of_range.value - 1)
 check('one reading short of the limit does not relock',
       parameters.gpio_p_out.value == 0b00000000,
@@ -487,6 +487,51 @@ check('TTL high', parameters.gpio_p_out.value == 0b11111111)
 check('ramp restored',
       parameters.ramp_amplitude.value
       == parameters.wavemeter_lock_initial_ramp_amplitude.value)
+
+print('the TTL waits for the wavemeter to agree with the line')
+# The correlation stage can centre a line perfectly and still have the wrong
+# one. Put the laser where the line search will succeed but the wavemeter
+# disagrees, and the TTL must not drop.
+parameters = make_parameters()
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.0)
+lock, control, monitor = start_lock(parameters, laser)
+feed_until(lock, parameters, laser,
+           lambda: parameters.wavemeter_lock_confirming.value)
+check('confirming before engaging',
+      parameters.wavemeter_lock_confirming.value)
+check('TTL still high while confirming',
+      parameters.gpio_p_out.value == 0b11111111)
+
+# the wavemeter now says the laser is 3 GHz from the setpoint
+laser.offset_GHz = 3.0
+feed(lock, parameters, laser, 5)
+check('refuses to engage on the wrong line',
+      parameters.gpio_p_out.value == 0b11111111,
+      '(engaged anyway)')
+check('goes back to steering', parameters.wavemeter_lock_steering.value)
+
+print('the TTL drops when both agree')
+parameters = make_parameters()
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.0)
+lock, control, monitor = start_lock(parameters, laser)
+check('locks when the wavemeter confirms',
+      feed_until(lock, parameters, laser,
+                 lambda: parameters.wavemeter_lock_locked.value))
+check('TTL low', parameters.gpio_p_out.value == 0b00000000)
+check('confirming cleared', not parameters.wavemeter_lock_confirming.value)
+
+print('a wavemeter that goes quiet at the last moment never engages')
+parameters = make_parameters()
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.0)
+lock, control, monitor = start_lock(parameters, laser)
+feed_until(lock, parameters, laser,
+           lambda: parameters.wavemeter_lock_confirming.value)
+laser.unreachable = True
+feed(lock, parameters, laser, 30)
+check('TTL stays high with no reading to confirm',
+      parameters.gpio_p_out.value == 0b11111111)
+check('still waiting, not locked',
+      not parameters.wavemeter_lock_locked.value)
 
 print('a slow poll does not look like a missing laser')
 # The lock looks at the monitor on every acquisition frame but the wavemeter is
