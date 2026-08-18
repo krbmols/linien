@@ -96,12 +96,18 @@ class FakeLaser:
         # Frequency walks by this much on every reading, so a laser can be
         # caught passing through the handoff window rather than sitting in it.
         self.drift_per_read_GHz = drift_per_read_GHz
+        # Wander is different from drift: it moves the reading about without
+        # going anywhere, which is what a free-running laser does and what a
+        # settle test has to tolerate.  Steering cannot chase it away.
+        self.wander_GHz = 0.0
+        self._wander_sign = 1
         self.clock = 1_000_000.0
 
     @property
     def frequency(self):
         moved = self.parameters.center.value - self.center_at_start
-        return SETPOINT + self.offset_GHz + moved * self.GHz_per_V
+        return (SETPOINT + self.offset_GHz + moved * self.GHz_per_V
+                + self._wander_sign * self.wander_GHz)
 
     def read(self, base_url, setpoint, search_range, use_raw=True, timeout=None):
         """Stands in for linien.server.wavemeter.read_once."""
@@ -115,6 +121,7 @@ class FakeLaser:
             return None
 
         self.offset_GHz += self.drift_per_read_GHz
+        self._wander_sign = -self._wander_sign
 
         self.clock += 1.0
         return {
@@ -542,8 +549,8 @@ print('a laser that never sits perfectly still still gets locked')
 parameters = make_parameters()
 parameters.wavemeter_skip_line_search.value = True
 parameters.wavemeter_settled_within.value = 5.0     # tighter than the wander
-laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.04,
-                  drift_per_read_GHz=0.02)          # 20 MHz of wander
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.04)
+laser.wander_GHz = 0.01                             # +-10 MHz, so 20 MHz apart
 lock, control, monitor = start_lock(parameters, laser)
 for _ in range(30):
     feed(lock, parameters, laser, 1)
@@ -558,12 +565,48 @@ check('and says so, with the number to use',
 parameters = make_parameters()
 parameters.wavemeter_skip_line_search.value = True
 parameters.wavemeter_settled_within.value = 50.0    # above the wander
-laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.04,
-                  drift_per_read_GHz=0.02)
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.04)
+laser.wander_GHz = 0.01
 lock, control, monitor = start_lock(parameters, laser)
 check('a threshold above the wander engages',
       feed_until(lock, parameters, laser,
                  lambda: parameters.gpio_p_out.value == 0b00000000),
+      '(status: %s)' % parameters.wavemeter_status.value)
+
+print('with the search off, the handoff window is not what gates it')
+# The configuration that stalled in the lab: engage within 50 MHz, but hand
+# over to the line search within 5 MHz -- tighter than the laser's own wander,
+# so steering could never get there and the lock never engaged. With no line
+# search to hand over to, that window has no business gating anything.
+parameters = make_parameters()
+parameters.wavemeter_skip_line_search.value = True
+parameters.wavemeter_range.value = 50.0             # engage within 50 MHz
+parameters.wavemeter_handoff_window.value = 5.0     # far tighter
+parameters.wavemeter_settled_within.value = 50.0
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.04)
+laser.wander_GHz = 0.01                             # wanders ~20 MHz, no drift
+lock, control, monitor = start_lock(parameters, laser)
+check('engages on the engage window, not the handoff one',
+      feed_until(lock, parameters, laser,
+                 lambda: parameters.gpio_p_out.value == 0b00000000),
+      '(status: %s)' % parameters.wavemeter_status.value)
+
+print('with the search on, the handoff window still governs')
+parameters = make_parameters()
+parameters.wavemeter_skip_line_search.value = False
+parameters.wavemeter_range.value = 50.0
+parameters.wavemeter_handoff_window.value = 5.0
+parameters.wavemeter_settled_within.value = 50.0
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.04)
+laser.wander_GHz = 0.01
+lock, control, monitor = start_lock(parameters, laser)
+for _ in range(25):
+    feed(lock, parameters, laser, 1)
+check('still steering for the tighter window',
+      not parameters.wavemeter_lock_approaching.value)
+check('and names the window it is aiming at',
+      'steering to within 5.0 MHz' in parameters.wavemeter_status.value
+      or 'waiting for it to settle' in parameters.wavemeter_status.value,
       '(status: %s)' % parameters.wavemeter_status.value)
 
 print('a settled laser does hand off')

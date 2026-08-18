@@ -275,12 +275,21 @@ class WavemeterLock:
         if self.slope_GHz_per_V is None:
             return self._calibrate_slope(detuning_MHz)
 
-        handoff_MHz = self.parameters.wavemeter_handoff_window.value
+        # With the line search switched off there is nothing to hand over to,
+        # so steering has no reason to chase the handoff window: what matters
+        # is the window the lock is engaged in.  Chasing the tighter of the two
+        # otherwise gates everything on a tolerance nobody asked for, and if it
+        # is tighter than the laser's own wander, on one it can never meet.
+        if self.parameters.wavemeter_skip_line_search.value:
+            target_MHz = self.parameters.wavemeter_range.value
+        else:
+            target_MHz = self.parameters.wavemeter_handoff_window.value
+
         moved_MHz = (None if self.last_detuning_MHz is None
                      else abs(detuning_MHz - self.last_detuning_MHz))
         self.last_detuning_MHz = detuning_MHz
 
-        if abs(detuning_MHz) <= handoff_MHz:
+        if abs(detuning_MHz) <= target_MHz:
             # Inside the window: stop correcting and watch whether it stays
             # put.  Handing over a laser that is still moving is what sends
             # this straight back to steering.
@@ -300,6 +309,14 @@ class WavemeterLock:
                          'n/a' if moved_MHz is None else '%.1f MHz' % moved_MHz)
             )
             return
+
+        # Outside it and still correcting.  Name the window being aimed at:
+        # a laser that hovers just outside one it can never reach looks the
+        # same as one that is simply on its way.
+        self.parameters.wavemeter_status.value = (
+            '%.1f MHz from setpoint, steering to within %.1f MHz'
+            % (detuning_MHz, target_MHz)
+        )
 
         self.settled_count = 0
         self._correct_center(detuning_MHz)
