@@ -1,12 +1,16 @@
 from PyQt5 import QtGui, QtWidgets
 from linien.gui.widgets import CustomWidget
-from linien.gui.utils_gui import param2ui
+from linien.gui.utils_gui import param2ui, server_has_wavemeter_lock
 import time
 
 class LockingPanel(QtWidgets.QWidget, CustomWidget):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.load_ui('locking_panel.ui')
+        # Set for real in connection_established, once the server has said
+        # which parameters it has.  Assume not until then: the widgets exist
+        # regardless of what the Red Pitaya is running.
+        self.has_wavemeter = False
 
     def ready(self):
         # PID controls
@@ -194,7 +198,8 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
                 idx = 0  # Auto
             elif self.parameters.relock_automatic_mode.value:
                 idx = 1  # Relock
-            elif self.parameters.wavemeter_lock_automatic_mode.value:
+            elif self.has_wavemeter \
+                    and self.parameters.wavemeter_lock_automatic_mode.value:
                 idx = 2  # Wavemeter
             else:
                 idx = 3  # Manual
@@ -206,7 +211,9 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
         # Subscribe to param changes
         self.parameters.automatic_mode.on_change(_sync_tab_from_params)
         self.parameters.relock_automatic_mode.on_change(_sync_tab_from_params)
-        self.parameters.wavemeter_lock_automatic_mode.on_change(_sync_tab_from_params)
+        if self.has_wavemeter:
+            self.parameters.wavemeter_lock_automatic_mode.on_change(
+                _sync_tab_from_params)
 
         #Slow PID
         param2ui(params.pid_on_slow_strength, self.ids.pid_on_slow_strength)
@@ -219,7 +226,7 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
             task = params.task.value
             al_failed = params.autolock_failed.value
             rl_failed = params.relock_failed.value
-            wm_failed = params.wavemeter_lock_failed.value
+            wm_failed = self.has_wavemeter and params.wavemeter_lock_failed.value
             task_running = (task is not None) and (not al_failed) \
                 and (not rl_failed) and (not wm_failed)
 
@@ -233,13 +240,16 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
         for param in (params.lock, params.autolock_approaching, params.autolock_watching,
                       params.autolock_failed, params.autolock_locked, 
                       params.relock_approaching, params.relock_watching,
-                      params.relock_failed, params.relock_locked,
-                      params.wavemeter_lock_steering,
-                      params.wavemeter_lock_approaching,
-                      params.wavemeter_lock_watching,
-                      params.wavemeter_lock_failed,
-                      params.wavemeter_lock_locked):
+                      params.relock_failed, params.relock_locked):
             param.on_change(lock_status_changed)
+
+        if self.has_wavemeter:
+            for param in (params.wavemeter_lock_steering,
+                          params.wavemeter_lock_approaching,
+                          params.wavemeter_lock_watching,
+                          params.wavemeter_lock_failed,
+                          params.wavemeter_lock_locked):
+                param.on_change(lock_status_changed)
 
         param2ui(params.target_slope_rising, self.ids.button_slope_rising)
         param2ui(
@@ -274,7 +284,8 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
     def lock_mode_changed(self, idx):
         self.parameters.automatic_mode.value = idx == 0
         self.parameters.relock_automatic_mode.value = idx == 1
-        self.parameters.wavemeter_lock_automatic_mode.value = idx == 2
+        if self.has_wavemeter:
+            self.parameters.wavemeter_lock_automatic_mode.value = idx == 2
 
     def start_manual_lock(self):
         self.control.pause_acquisition()
@@ -310,7 +321,8 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
     def reset_lock_failed(self):
         self.parameters.autolock_failed.value = False
         self.parameters.relock_failed.value = False
-        self.parameters.wavemeter_lock_failed.value = False
+        if self.has_wavemeter:
+            self.parameters.wavemeter_lock_failed.value = False
 
     # Relock tab interactions
     def watch_relock_changed(self):
@@ -330,27 +342,41 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
 
     # Wavemeter lock tab interactions
     def wavemeter_value_changed(self, name, value):
+        if not self.has_wavemeter:
+            return
         getattr(self.parameters, name).value = value
 
     def wavemeter_url_changed(self):
+        if not self.has_wavemeter:
+            return
         self.parameters.wavemeter_url.value = self.ids.wavemeter_url.text().strip()
 
     def wavemeter_use_raw_changed(self):
+        if not self.has_wavemeter:
+            return
         self.parameters.wavemeter_use_raw.value = \
             bool(self.ids.wavemeter_use_raw_checkbox.checkState())
 
     def watch_wavemeter_changed(self):
+        if not self.has_wavemeter:
+            return
         self.parameters.watch_wavemeter_lock.value = \
             bool(self.ids.watch_wavemeter_checkbox.checkState())
 
     def wavemeter_auto_offset_changed(self):
+        if not self.has_wavemeter:
+            return
         self.parameters.wavemeter_lock_determine_offset.value = \
             int(self.ids.autoOffsetCheckbox_wavemeter.checkState())
 
     def start_wavemeter_lock_selection(self):
+        if not self.has_wavemeter:
+            return
         self.parameters.wavemeter_lock_selection.value = True
 
     def stop_wavemeter_lock_selection(self):
+        if not self.has_wavemeter:
+            return
         self.parameters.wavemeter_lock_selection.value = False
 
     def test_wavemeter(self):
