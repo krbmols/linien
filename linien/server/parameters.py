@@ -313,20 +313,29 @@ class Parameters(BaseParameters):
         # RedPitaya's CA bundle is old enough that TLS may not validate, and
         # the reverse proxy only adds a hop to the lock loop.
         self.wavemeter_url = Parameter(start='http://192.168.0.119:8050')
-        # Frequency the laser should sit at, in GHz.
-        self.wavemeter_setpoint = Parameter(start=309602.628)
-        # How far it may stray before it counts as unlocked, in MHz.
-        self.wavemeter_range = Parameter(start=50.0, min_=0)
+        # Frequency the laser should sit at, in GHz, as the wavemeter reports
+        # it uncalibrated.  This is an instrument reading, not a spectroscopic
+        # value: what the wavemeter would call it after calibration does not
+        # matter, only that the laser reads this number when it is where it
+        # belongs.
+        self.wavemeter_setpoint = Parameter(start=309602.7155)
+        # How far it may stray before it counts as unlocked, in MHz.  Tune this
+        # to the cavity: it has to be looser than the laser's ordinary wander,
+        # or a good lock is dropped, and tighter than the spacing that would
+        # let the laser settle somewhere it should not, or a slip goes unseen.
+        self.wavemeter_range = Parameter(start=100.0, min_=0)
         # How wide a window to ask the wavemeter about, in GHz. It has to be
         # wide enough to still find the laser once it has drifted, and narrow
         # enough not to catch a neighbouring laser: a laser missing from a
         # window this wide is taken to be off, not merely unmeasured.
         self.wavemeter_search_range = Parameter(start=2.0, min_=0)
-        # Saturation below which the wavemeter throws a reading away as noise.
-        # Set it below the amplitude the laser actually reads -- watch that on
-        # the wavemeter's own page -- or the laser will intermittently vanish
-        # from the answer and look like it has gone missing.
-        self.wavemeter_min_amp = Parameter(start=0.02, min_=0, max_=1)
+        # Saturation below which the wavemeter throws a reading away.  It is
+        # not a noise floor but a trust floor: the wavemeter's own frequencies
+        # stop being reliable below it, so a dim reading is worth less than no
+        # reading.  A laser that dims past it therefore reads as absent, which
+        # only relocks if it stays that way for wavemeter_max_out_of_range
+        # polls, so a brief dip costs nothing.
+        self.wavemeter_min_amp = Parameter(start=0.05, min_=0, max_=1)
         # Seconds between wavemeter requests.
         self.wavemeter_poll_interval = Parameter(start=1.0, min_=0.05)
         # Consecutive out-of-range readings before relocking. One bad reading

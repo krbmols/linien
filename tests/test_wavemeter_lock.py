@@ -236,7 +236,7 @@ print('url building')
 check('endpoint appended',
       build_url('http://host:8050', 500.0, 1.0)
       == 'http://host:8050/api/latest?freq=500.000000&tol=1.000000'
-         '&min_amp=0.0200&raw=1',
+         '&min_amp=0.0500&raw=1',
       '(got %s)' % build_url('http://host:8050', 500.0, 1.0))
 check('amplitude floor passed through',
       '&min_amp=0.0050' in build_url('http://host:8050', 500.0, 1.0, min_amp=0.005))
@@ -274,19 +274,39 @@ def opener_for(body):
 
 reading = read_once('http://h', 1.0, 1.0,
                     opener=opener_for('{"found": true, "laser": '
-                                      '{"detuning_MHz": 12.5}}'))
+                                      '{"detuning_MHz": 12.5, "used": "raw"}}'))
 check('reading parsed', reading['detuning_MHz'] == 12.5)
 check('not found is None',
       read_once('http://h', 1.0, 1.0,
                 opener=opener_for('{"found": false, "laser": null}')) is None)
 for body, why in [('not json at all', 'malformed json'),
-                  ('{"found": true, "laser": {}}', 'reading without a detuning'),
+                  ('{"found": true, "laser": {"used": "raw"}}',
+                   'reading without a detuning'),
                   ('[1, 2, 3]', 'unexpected shape')]:
     try:
         read_once('http://h', 1.0, 1.0, opener=opener_for(body))
         check(why + ' rejected', False)
     except WavemeterError:
         check(why + ' rejected', True)
+
+
+print('a server that ignores raw=1 is refused')
+for body, why in [
+    ('{"found": true, "laser": {"detuning_MHz": 1.0, "used": "calibrated"}}',
+     'calibrated answer to a raw request'),
+    ('{"found": true, "laser": {"detuning_MHz": 1.0}}',
+     'unlabelled answer'),
+]:
+    try:
+        read_once('http://h', 1.0, 1.0, opener=opener_for(body))
+        check(why + ' rejected', False)
+    except WavemeterError as error:
+        check(why + ' rejected', 'up to date' in str(error))
+check('calibrated request accepts a calibrated answer',
+      read_once('http://h', 1.0, 1.0, use_raw=False,
+                opener=opener_for('{"found": true, "laser": '
+                                  '{"detuning_MHz": 1.0, "used": "calibrated"}}')
+                )['detuning_MHz'] == 1.0)
 
 
 def broken_opener(url, timeout=None):

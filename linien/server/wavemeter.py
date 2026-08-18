@@ -23,12 +23,10 @@ DEFAULT_USE_RAW = True
 
 DEFAULT_TIMEOUT = 2.0
 
-# Saturation below which the wavemeter discards a reading as noise rather than
-# light.  The server's own default is 0.05, inherited from its CSV logger, which
-# is uncomfortably close to what a dim laser actually reads -- a dip below it
-# makes the laser vanish from the answer entirely.  Ask for a lower floor and
-# leave the margin to the user, who can watch the reported amplitude.
-DEFAULT_MIN_AMP = 0.02
+# Saturation below which the wavemeter discards a reading.  This is the point
+# past which the instrument's own frequencies stop being trustworthy, so a
+# reading below it is worse than no reading at all.
+DEFAULT_MIN_AMP = 0.05
 
 ENDPOINT = '/api/latest'
 
@@ -95,6 +93,19 @@ def read_once(base_url, setpoint, search_range, use_raw=DEFAULT_USE_RAW,
     laser = payload.get('laser')
     if not isinstance(laser, dict) or 'detuning_MHz' not in laser:
         raise WavemeterError('response from %s has no reading in it' % url)
+
+    # The detuning is computed by the wavemeter, so it is only meaningful if
+    # the wavemeter measured it the way we asked.  A server too old to know
+    # about raw=1 ignores the flag and answers in calibrated frequencies --
+    # silently, and off by the whole calibration correction.  Refuse it rather
+    # than lock to a number that means something else.
+    used = laser.get('used')
+    wanted = 'raw' if use_raw else 'calibrated'
+    if used != wanted:
+        raise WavemeterError(
+            '%s answered with %s frequencies, not %s -- is the wavemeter '
+            'server up to date?' % (url, used or 'unlabelled', wanted)
+        )
 
     return laser
 
