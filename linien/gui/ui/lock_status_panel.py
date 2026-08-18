@@ -107,8 +107,7 @@ class LockStatusPanel(QtWidgets.QWidget, CustomWidget):
                     set_text('Steering onto the setpoint (%+.1f MHz to go)...'
                              % detuning)
                 elif wm_confirming:
-                    set_text('Line found -- checking the frequency before '
-                             'engaging the lockbox...')
+                    set_text('Engaged -- checking where the laser landed...')
                 elif wm_retrying:
                     set_text('Trying again to reach the setpoint...')
                 else:

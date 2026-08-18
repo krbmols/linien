@@ -178,6 +178,7 @@ def make_parameters():
     parameters.wavemeter_search_range.value = 20.0   # GHz
     parameters.wavemeter_handoff_window.value = 200.0  # MHz
     parameters.wavemeter_settle_time.value = 0.0
+    parameters.wavemeter_lock_settle_time.value = 0.0
     parameters.ramp_amplitude.value = 1
     parameters.center.value = 0
     return parameters
@@ -488,50 +489,55 @@ check('ramp restored',
       parameters.ramp_amplitude.value
       == parameters.wavemeter_lock_initial_ramp_amplitude.value)
 
-print('the TTL waits for the wavemeter to agree with the line')
-# The correlation stage can centre a line perfectly and still have the wrong
-# one. Put the laser where the line search will succeed but the wavemeter
-# disagrees, and the TTL must not drop.
+print('the TTL drops as soon as the line is centred')
+# The wavemeter cannot judge a scanning laser -- it measures the sweep, not the
+# line -- so the lockbox is handed the laser first and asked about afterwards.
 parameters = make_parameters()
 laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.0)
 lock, control, monitor = start_lock(parameters, laser)
 feed_until(lock, parameters, laser,
            lambda: parameters.wavemeter_lock_confirming.value)
-check('confirming before engaging',
+check('engaged, pending verification',
       parameters.wavemeter_lock_confirming.value)
-check('TTL still high while confirming',
-      parameters.gpio_p_out.value == 0b11111111)
+check('TTL already low', parameters.gpio_p_out.value == 0b00000000)
+check('not yet counted as locked',
+      not parameters.wavemeter_lock_watching.value)
 
-# the wavemeter now says the laser is 3 GHz from the setpoint
-laser.offset_GHz = 3.0
 feed(lock, parameters, laser, 5)
-check('refuses to engage on the wrong line',
-      parameters.gpio_p_out.value == 0b11111111,
-      '(engaged anyway)')
-check('goes back to steering', parameters.wavemeter_lock_steering.value)
+check('verified and locked', parameters.wavemeter_lock_locked.value)
+check('TTL stays low', parameters.gpio_p_out.value == 0b00000000)
+check('watching', parameters.wavemeter_lock_watching.value)
+check('verification cleared', not parameters.wavemeter_lock_confirming.value)
 
-print('the TTL drops when both agree')
+print('a lock on the wrong line is released again')
 parameters = make_parameters()
 laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.0)
 lock, control, monitor = start_lock(parameters, laser)
-check('locks when the wavemeter confirms',
-      feed_until(lock, parameters, laser,
-                 lambda: parameters.wavemeter_lock_locked.value))
-check('TTL low', parameters.gpio_p_out.value == 0b00000000)
-check('confirming cleared', not parameters.wavemeter_lock_confirming.value)
+feed_until(lock, parameters, laser,
+           lambda: parameters.wavemeter_lock_confirming.value)
+check('engaged', parameters.gpio_p_out.value == 0b00000000)
 
-print('a wavemeter that goes quiet at the last moment never engages')
+# the lockbox captured, but 3 GHz from where it should have
+laser.offset_GHz = 3.0
+feed(lock, parameters, laser, 5)
+check('TTL released', parameters.gpio_p_out.value == 0b11111111,
+      '(still engaged on the wrong line)')
+check('back to steering', parameters.wavemeter_lock_steering.value)
+check('not reported as locked', not parameters.wavemeter_lock_watching.value)
+
+print('an unverifiable lock is kept, not thrown away')
 parameters = make_parameters()
 laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.0)
 lock, control, monitor = start_lock(parameters, laser)
 feed_until(lock, parameters, laser,
            lambda: parameters.wavemeter_lock_confirming.value)
 laser.unreachable = True
-feed(lock, parameters, laser, 30)
-check('TTL stays high with no reading to confirm',
-      parameters.gpio_p_out.value == 0b11111111)
-check('still waiting, not locked',
-      not parameters.wavemeter_lock_locked.value)
+lock.stage_started_at = lock._now() - 1000   # let the wait time out
+feed(lock, parameters, laser, 5)
+check('TTL still low', parameters.gpio_p_out.value == 0b00000000)
+check('treated as locked and watched',
+      parameters.wavemeter_lock_watching.value)
+check('flagged as stale', parameters.wavemeter_stale.value)
 
 print('a slow poll does not look like a missing laser')
 # The lock looks at the monitor on every acquisition frame but the wavemeter is

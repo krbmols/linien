@@ -16,10 +16,17 @@ autolock and relock use -- takes it the rest of the way onto the line.
 As in `relock.py`, the PID is not what holds the laser: the lock is engaged and
 released through the GPIO TTL that drives the external lockbox, high while
 unlocked and scanning, low once locked.  The lockbox does the locking; all it
-needs is the TTL.  Handing it a laser sitting on the wrong feature is the one
-thing this must not do, so the TTL only goes low once the correlation stage has
-centred a line *and* the wavemeter independently agrees the laser is within the
-engage window.  Two sources have to concur before control leaves linien.
+needs is the TTL.  Two sources still have to concur before the lock is
+believed -- the correlation stage has to centre a line and the wavemeter has to
+agree the laser is within the engage window -- but the wavemeter is asked
+*after* the TTL goes low, not before.
+
+That order matters.  A scanning laser is smeared across the scan as far as the
+wavemeter is concerned, so a reading taken while linien is still sweeping
+measures the sweep, not the line.  Only once the lockbox is holding the laser
+does the wavemeter see a single frequency worth comparing to a setpoint.  So
+the lock is engaged first and checked immediately afterwards, and a laser that
+turns out to be on the wrong line is released again a second later.
 """
 
 import pickle
@@ -178,7 +185,7 @@ class WavemeterLock:
                 return self.steer_towards_setpoint()
 
             if self.parameters.wavemeter_lock_confirming.value:
-                return self.confirm_and_engage()
+                return self.verify_lock()
 
             plot_data = pickle.loads(plot_data)
             if plot_data is None:
@@ -347,51 +354,9 @@ class WavemeterLock:
             )
 
         if self.approacher.approach_line(combined_error_signal):
-            self._begin_confirming()
+            self._lock()
 
-    # ------------------------------------------------------- stage: confirm
-
-    def _begin_confirming(self):
-        """Line centred; now make the wavemeter agree before handing over."""
-        print('wavemeter lock: line centred, checking the frequency')
-        self.parameters.wavemeter_lock_approaching.value = False
-        self.parameters.wavemeter_lock_confirming.value = True
-        self.stage_started_at = self._now()
-
-        # Judge by a reading taken after the approach settled, not one already
-        # in flight while the centre was still moving.
-        self.ignore_readings_before = \
-            self._now() + self.parameters.wavemeter_settle_time.value
-
-    def confirm_and_engage(self):
-        """Engage only if the wavemeter agrees with the line the search found.
-
-        The correlation stage can centre a line perfectly and still have the
-        wrong one -- neighbouring features look alike, which is the whole
-        reason for measuring an absolute frequency. Checking here costs one
-        poll and is the difference between handing the lockbox the right line
-        and handing it a confident mistake.
-        """
-        outcome, reading, detuning_MHz = self._current_detuning()
-
-        if outcome != READING_OK:
-            # Never engage on no information.
-            if self._stage_timed_out():
-                return self.fail(
-                    'no wavemeter reading to confirm the line: '
-                    + (self.parameters.wavemeter_status.value or 'no answer')
-                )
-            return
-
-        if abs(detuning_MHz) <= self.parameters.wavemeter_range.value:
-            return self._lock()
-
-        reason = ('line found at %.1f MHz from the setpoint, outside the '
-                  '%.1f MHz engage window'
-                  % (detuning_MHz, self.parameters.wavemeter_range.value))
-        if self.parameters.watch_wavemeter_lock.value:
-            return self.relock(reason)
-        return self.fail(reason)
+    # ------------------------------------------------------ stage: engage
 
     def _lock(self):
         self.control.pause_acquisition()
@@ -409,6 +374,56 @@ class WavemeterLock:
         self.send_lockbox_TTL(locked=True)
         self.control.continue_acquisition()
 
+        # Engaged, but not yet believed. The lockbox needs a moment to capture
+        # the laser, and only once it has is a wavemeter reading worth
+        # anything.
+        self.parameters.wavemeter_lock_confirming.value = True
+        self.out_of_range_count = 0
+        self.stage_started_at = self._now()
+        self.ignore_readings_before = \
+            self._now() + self.parameters.wavemeter_lock_settle_time.value
+        print('wavemeter lock: engaged, waiting for the lockbox to settle')
+
+    # ------------------------------------------------------ stage: verify
+
+    def verify_lock(self):
+        """Check where the laser actually ended up, now that it is held.
+
+        The correlation stage can centre a line perfectly and still have the
+        wrong one -- neighbouring features look alike, which is the whole
+        reason for measuring an absolute frequency. This is where that is
+        caught, and it is only answerable here: before the lockbox took the
+        laser, the wavemeter was watching it sweep.
+        """
+        outcome, reading, detuning_MHz = self._current_detuning()
+
+        if outcome == READING_OK:
+            if abs(detuning_MHz) <= self.parameters.wavemeter_range.value:
+                return self._begin_watching()
+
+            reason = ('locked %.1f MHz from the setpoint, outside the %.1f MHz '
+                      'window' % (detuning_MHz,
+                                  self.parameters.wavemeter_range.value))
+            if self.parameters.watch_wavemeter_lock.value:
+                return self.relock(reason)
+            return self.fail(reason)
+
+        if outcome == READING_ABSENT:
+            reason = 'wavemeter cannot see the laser after engaging'
+            if self.parameters.watch_wavemeter_lock.value:
+                return self.relock(reason)
+            return self.fail(reason)
+
+        # No answer yet, or none at all. Waiting costs nothing while the TTL is
+        # already low, so wait -- but do not wait forever: an unreachable
+        # wavemeter is no reason to throw away a lock that may well be good.
+        if self._stage_timed_out():
+            print('wavemeter lock: engaged but unverified (%s)'
+                  % (self.parameters.wavemeter_status.value or 'no answer'))
+            return self._begin_watching()
+
+    def _begin_watching(self):
+        self.parameters.wavemeter_lock_confirming.value = False
         self.parameters.wavemeter_lock_locked.value = True
         self.parameters.wavemeter_lock_watching.value = True
         self.parameters.wavemeter_lock_retrying.value = False
@@ -467,6 +482,8 @@ class WavemeterLock:
 
     def relock(self, reason):
         print('wavemeter lock: relocking (%s)' % reason)
+        # _reset_scan takes the TTL back high, releasing the lockbox if the
+        # relock was decided after engaging.
 
         if not self.parameters.wavemeter_lock_running.value:
             self.parameters.wavemeter_lock_running.value = True

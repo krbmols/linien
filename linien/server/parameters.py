@@ -53,7 +53,8 @@ class Parameters(BaseParameters):
             'wavemeter_search_range', 'wavemeter_poll_interval',
             'wavemeter_min_amp',
             'wavemeter_max_out_of_range', 'wavemeter_handoff_window',
-            'wavemeter_settle_time', 'wavemeter_steering_ramp_amplitude',
+            'wavemeter_settle_time', 'wavemeter_lock_settle_time',
+            'wavemeter_steering_ramp_amplitude',
             'wavemeter_use_raw', 'watch_wavemeter_lock',
             'wavemeter_lock_determine_offset',
             'plot_line_width', 'plot_color_0', 'plot_color_1', 'plot_color_2',
@@ -348,6 +349,11 @@ class Parameters(BaseParameters):
         self.wavemeter_handoff_window = Parameter(start=200.0, min_=0)
         # Seconds to let the laser settle after moving the ramp centre.
         self.wavemeter_settle_time = Parameter(start=0.5, min_=0)
+        # Seconds to give the lockbox to capture the laser after the TTL goes
+        # low, before asking the wavemeter where it actually ended up. Too
+        # short and the check measures the capture transient rather than the
+        # lock.
+        self.wavemeter_lock_settle_time = Parameter(start=2.0, min_=0)
         # Ramp amplitude used while steering on the wavemeter. A running ramp
         # smears the measured frequency, so the scan is narrowed for this stage
         # and restored before approaching.
