@@ -356,14 +356,10 @@ reached_handoff = feed_until(
     lambda: parameters.wavemeter_lock_approaching.value
 )
 
-check('slope measured', lock.slope_GHz_per_V is not None)
-check('slope sign correct',
-      lock.slope_GHz_per_V is not None and lock.slope_GHz_per_V < 0,
-      '(got %s)' % lock.slope_GHz_per_V)
-check('slope roughly right',
-      lock.slope_GHz_per_V is not None
-      and abs(lock.slope_GHz_per_V - (-3.0)) < 0.5,
-      '(got %s)' % lock.slope_GHz_per_V)
+check('found a direction that works', lock.direction_known)
+check('moved the laser towards the setpoint',
+      abs(laser.frequency - SETPOINT) < 2.0,
+      '(off by %.3f GHz)' % (laser.frequency - SETPOINT))
 check('reached the handoff window',
       abs(laser.frequency - SETPOINT) <= 1.0,
       '(off by %.3f GHz)' % (laser.frequency - SETPOINT))
@@ -383,12 +379,40 @@ laser = FakeLaser(parameters, GHz_per_V=+2.5, offset_GHz=-2.0)
 lock, control, monitor = start_lock(parameters, laser)
 feed_until(lock, parameters, laser,
            lambda: parameters.wavemeter_lock_approaching.value)
-check('slope sign follows the laser',
-      lock.slope_GHz_per_V is not None and lock.slope_GHz_per_V > 0,
-      '(got %s)' % lock.slope_GHz_per_V)
+check('reversed to find the other direction', lock.direction_known)
 check('reached the handoff window',
       abs(laser.frequency - SETPOINT) <= 1.0,
       '(off by %.3f GHz)' % (laser.frequency - SETPOINT))
+
+print('the search finds the direction whichever way the laser tunes')
+for label, slope in (('negative tuning', -3.0), ('positive tuning', +2.5),
+                     ('weak tuning', -0.4)):
+    parameters = make_parameters()
+    parameters.wavemeter_skip_line_search.value = True
+    # Start somewhere the +-1 V of ramp centre can actually reach: a weakly
+    # tuning laser cannot be dragged as far as a strongly tuning one.
+    laser = FakeLaser(parameters, GHz_per_V=slope,
+                      offset_GHz=abs(slope) * 0.4)
+    laser.wander_GHz = 0.005
+    lock, control, monitor = start_lock(parameters, laser)
+    check('%s: locks with no coefficient given' % label,
+          feed_until(lock, parameters, laser,
+                     lambda: parameters.wavemeter_lock_locked.value),
+          '(left %.3f GHz out)' % (laser.frequency - SETPOINT))
+
+print('a bad opening guess costs one reading, not the lock')
+parameters = make_parameters()
+parameters.wavemeter_skip_line_search.value = True
+# Sign chosen so the search's opening guess is the wrong way round.
+laser = FakeLaser(parameters, GHz_per_V=+2.5, offset_GHz=1.0)
+laser.wander_GHz = 0.005
+lock, control, monitor = start_lock(parameters, laser)
+feed(lock, parameters, laser, 3)
+check('noticed it was going the wrong way', lock.steering_direction == -1,
+      '(direction %s)' % lock.steering_direction)
+check('and still gets there',
+      feed_until(lock, parameters, laser,
+                 lambda: parameters.wavemeter_lock_locked.value))
 
 print('a laser that ignores the ramp centre')
 parameters = make_parameters()

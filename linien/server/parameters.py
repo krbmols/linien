@@ -53,7 +53,7 @@ class Parameters(BaseParameters):
             'wavemeter_search_range', 'wavemeter_poll_interval',
             'wavemeter_min_amp',
             'wavemeter_max_out_of_range', 'wavemeter_handoff_window',
-            'wavemeter_settled_within',
+            'wavemeter_settled_within', 'wavemeter_steering_step',
             'wavemeter_settle_time', 'wavemeter_lock_settle_time',
             'wavemeter_steering_ramp_amplitude',
             'wavemeter_use_raw', 'watch_wavemeter_lock',
@@ -362,6 +362,12 @@ class Parameters(BaseParameters):
         # short and the check measures the capture transient rather than the
         # lock.
         self.wavemeter_lock_settle_time = Parameter(start=2.0, min_=0)
+        # How far the steering search moves the ramp centre on its first try,
+        # in volts.  It adapts from there -- growing while it helps, halving
+        # when it overshoots -- so this only has to be close.  Too small and a
+        # step moves the laser less than it wanders on its own, leaving the
+        # search unable to tell whether it helped.
+        self.wavemeter_steering_step = Parameter(start=0.05, min_=0.001, max_=0.2)
         # Ramp amplitude used while steering on the wavemeter. A running ramp
         # smears the measured frequency, so the scan is narrowed for this stage
         # and restored before approaching.

@@ -40,34 +40,42 @@ from linien.common import get_lock_point, combine_error_signal, \
 from linien.server.approach_line import Approacher
 from linien.server.wavemeter import WavemeterMonitor
 
-# Steering moves the ramp centre by this fraction of the correction it thinks
-# it needs.  Under-correcting costs an iteration or two and keeps a wrong slope
-# estimate from throwing the laser further away than it started.
-STEERING_GAIN = 0.8
+# Steering watches the wavemeter and nothing else.  There is no model of how
+# far a volt of ramp centre moves the laser: such a coefficient has to be
+# measured, the measurement can come out wrong -- in sign, most damagingly --
+# and every correction afterwards inherits the error, walking the laser away
+# while looking like it is working.
+#
+# Instead the direction is discovered and then held.  Step, look, and if the
+# laser ended up further from the setpoint than it started, reverse.  A step
+# that keeps helping grows; one that overshoots reverses and halves.  Nothing
+# is remembered between relocks that could be wrong.
+STEP_GROWTH = 1.5
+STEP_SHRINK = 0.5
 
-# Never move the centre by more than this in one step, whatever the arithmetic
-# says.  A bad slope estimate should waste a step, not lose the laser.
+# Never move the centre by more than this in one step, whatever the search
+# wants: a step should waste a reading, not lose the laser.
 MAX_STEP_V = 0.2
 
-# Probe sizes tried when measuring the centre-to-frequency slope, in volts.
-# The first that moves the laser further than CALIBRATION_MIN_SHIFT_MHZ wins.
-CALIBRATION_PROBES_V = (0.02, 0.05, 0.1, 0.2)
-CALIBRATION_MIN_SHIFT_MHZ = 20.0
+# Below this the search has run out of resolution.  A laser that is not
+# responding will halve its way down here, which is how that is noticed.
+MIN_STEP_V = 0.002
 
-# Readings that must land inside the handoff window before the line search
-# takes over.  Crossing into the window is not the same as having arrived: a
-# laser still moving when the search starts keeps sliding while the search
-# zooms, the search walks the ramp centre chasing it, and it leaves the window
-# again -- which sends the whole thing back to steering, over and over.  Waiting
-# for it to sit still costs a couple of seconds and settles that loop.
+# Readings spent at the smallest step without improving before concluding the
+# laser is not following the ramp centre at all.
+STALLED_READINGS = 6
+
+# Readings that must land inside the window before handing over.  Crossing into
+# it is not the same as having arrived: a laser still moving when the next stage
+# starts keeps sliding, and ends up outside again -- which sends the whole thing
+# back to steering, over and over.
+#
+# Being inside is not enough on its own either.  A laser drifting slowly is
+# inside for every reading of its crossing while still sliding straight through,
+# so successive readings also have to agree with each other, to within
+# wavemeter_settled_within -- a property of how quietly the laser sits while
+# unlocked, and therefore something only the person running it can know.
 HANDOFF_CONFIRMATIONS = 3
-
-# Being inside the window is not enough on its own either.  A laser drifting
-# slowly crosses the window over several readings and is inside for all of
-# them, while still sliding straight through.  So successive readings also have
-# to agree with each other, to within wavemeter_settled_within -- a property of
-# how quietly the laser sits while unlocked, and therefore something only the
-# person running it can know.
 
 # Give up on a stage rather than steering forever.
 STEERING_TIMEOUT_S = 120.0
@@ -119,10 +127,14 @@ class WavemeterLock:
         self.out_of_range_count = 0
         self.settled_count = 0
         self.last_detuning_MHz = None
-        self.last_correction_from_MHz = None
-        self.slope_GHz_per_V = None
-        self.calibration_probe_idx = 0
-        self.calibration_start = None
+        # Which way to move the centre, and how far.  Both are found by
+        # trying, so nothing survives a relock that could be wrong.
+        self.steering_direction = 1
+        self.direction_known = False
+        self.steering_step_V = None
+        self.last_steer_detuning_MHz = None
+        self.last_step_V = 0.0
+        self.stalled_readings = 0
         self.stage_started_at = None
         self.last_answer_arrival = None
         self.ignore_readings_before = None
@@ -273,9 +285,6 @@ class WavemeterLock:
         if self._stage_timed_out():
             return self.fail('steering did not reach the setpoint in time')
 
-        if self.slope_GHz_per_V is None:
-            return self._calibrate_slope(detuning_MHz)
-
         # With the line search switched off there is nothing to hand over to,
         # so steering has no reason to chase the handoff window: what matters
         # is the window the lock is engaged in.  Chasing the tighter of the two
@@ -320,74 +329,70 @@ class WavemeterLock:
         )
 
         self.settled_count = 0
-        self._correct_center(detuning_MHz)
+        self._search_towards_setpoint(detuning_MHz)
 
-    def _calibrate_slope(self, detuning_MHz):
-        """Measure GHz per volt of ramp centre by stepping it and looking.
+    def _search_towards_setpoint(self, detuning_MHz):
+        """Move the ramp centre, judging only by whether the laser got closer.
 
-        The sign and size depend on the laser, its current tuning and which
-        output drives it, so nothing can be assumed -- but the lock does not
-        need a calibration that survives, only one good enough to aim the next
-        few steps.
+        The first step is a guess at the direction; the reading after it settles
+        the question, and from then on the direction is only revisited when a
+        step makes things worse -- which, once the direction is right, means
+        the step overshot and should be smaller.
         """
-        if self.calibration_start is None:
-            self.calibration_start = (self.parameters.center.value, detuning_MHz)
-            probe = CALIBRATION_PROBES_V[self.calibration_probe_idx]
-            print('wavemeter lock: calibrating, probing %+.3f V from centre '
-                  '%+.3f V at %.1f MHz'
-                  % (probe, self.parameters.center.value, detuning_MHz))
-            self._step_center(probe)
-            return
+        if self.steering_step_V is None:
+            self.steering_step_V = self.parameters.wavemeter_steering_step.value
 
-        start_center, start_detuning = self.calibration_start
-        moved_MHz = detuning_MHz - start_detuning
-        probe_V = self.parameters.center.value - start_center
+        if self.last_steer_detuning_MHz is not None:
+            improved = abs(detuning_MHz) < abs(self.last_steer_detuning_MHz)
 
-        print('wavemeter lock: probe of %+.3f V moved the laser %+.1f MHz'
-              % (probe_V, moved_MHz))
+            # Report what the last step actually bought, in the units the
+            # laser is specified in, so the log says whether it is responding.
+            moved_MHz = detuning_MHz - self.last_steer_detuning_MHz
+            self.parameters.wavemeter_slope.value = (
+                (moved_MHz * 1e-3) / self.last_step_V if self.last_step_V else 0.0
+            )
 
-        if abs(moved_MHz) < CALIBRATION_MIN_SHIFT_MHZ:
-            # Too small to trust: the laser may just be jittering. Try a bigger
-            # probe from where we now are.
-            self.calibration_probe_idx += 1
-            if self.calibration_probe_idx >= len(CALIBRATION_PROBES_V):
-                return self.fail(
-                    'laser frequency does not follow the ramp centre '
-                    '(moved %.0f MHz for %.2f V)' % (moved_MHz, probe_V)
-                )
-            self.calibration_start = (self.parameters.center.value, detuning_MHz)
-            self._step_center(CALIBRATION_PROBES_V[self.calibration_probe_idx])
-            return
+            if improved:
+                self.stalled_readings = 0
+                self.direction_known = True
+                if abs(moved_MHz) > abs(detuning_MHz):
+                    # That step covered more ground than is left to cover, so
+                    # repeating it would sail past.  Still no model of the
+                    # laser -- only what the last step actually did.
+                    self.steering_step_V = max(
+                        self.steering_step_V * STEP_SHRINK, MIN_STEP_V)
+                else:
+                    self.steering_step_V = min(
+                        self.steering_step_V * STEP_GROWTH, MAX_STEP_V)
+            elif not self.direction_known:
+                # The opening guess was simply the wrong way round.  Turn
+                # around at full size: nothing has overshot yet.
+                self.direction_known = True
+                self.steering_direction = -self.steering_direction
+                print('wavemeter lock: wrong way, reversing')
+            else:
+                # Going the right way and still got worse: too far.
+                self.steering_direction = -self.steering_direction
+                self.steering_step_V = max(self.steering_step_V * STEP_SHRINK,
+                                           MIN_STEP_V)
+                if self.steering_step_V <= MIN_STEP_V:
+                    self.stalled_readings += 1
+                    if self.stalled_readings >= STALLED_READINGS:
+                        return self.fail(
+                            'laser frequency does not follow the ramp centre '
+                            '(%.1f MHz out, steps down to %.3f V doing nothing)'
+                            % (detuning_MHz, self.steering_step_V)
+                        )
 
-        self.slope_GHz_per_V = (moved_MHz * 1e-3) / probe_V
-        self.parameters.wavemeter_slope.value = self.slope_GHz_per_V
-        print('wavemeter lock: %.3f GHz per volt of ramp centre'
-              % self.slope_GHz_per_V)
-
-    def _correct_center(self, detuning_MHz):
-        # Detuning is measured - setpoint, so move the centre the other way.
-        needed_V = -(detuning_MHz * 1e-3) / self.slope_GHz_per_V
-
-        # A correction that leaves the laser further away than it started means
-        # the slope is wrong -- most likely its sign -- and repeating it walks
-        # the laser off. Worth seeing in the log rather than inferring from the
-        # ramp centre eventually hitting a rail.
-        if self.last_correction_from_MHz is not None:
-            if abs(detuning_MHz) > abs(self.last_correction_from_MHz):
-                print('wavemeter lock: last correction made it worse '
-                      '(%.1f -> %.1f MHz); slope %+.3f GHz/V may be wrong'
-                      % (self.last_correction_from_MHz, detuning_MHz,
-                         self.slope_GHz_per_V))
-        self.last_correction_from_MHz = detuning_MHz
-
-        print('wavemeter lock: %.1f MHz out, slope %+.3f GHz/V, moving centre '
-              '%+.3f V from %+.3f V'
-              % (detuning_MHz, self.slope_GHz_per_V, needed_V * STEERING_GAIN,
-                 self.parameters.center.value))
-        self._step_center(needed_V * STEERING_GAIN)
+        self.last_steer_detuning_MHz = detuning_MHz
+        step_V = self.steering_direction * self.steering_step_V
+        print('wavemeter lock: %.1f MHz out, stepping centre %+.3f V from '
+              '%+.3f V' % (detuning_MHz, step_V, self.parameters.center.value))
+        self._step_center(step_V)
 
     def _step_center(self, step_V):
         step_V = float(np.clip(step_V, -MAX_STEP_V, MAX_STEP_V))
+        self.last_step_V = step_V
         new_center = self.parameters.center.value + step_V
 
         if not -1 <= new_center <= 1:
