@@ -41,7 +41,8 @@ class Parameters(BaseParameters):
             'filter_2_frequency_a', 'filter_2_frequency_b',
             'filter_2_type_a', 'filter_2_type_b',
             'filter_automatic_a', 'filter_automatic_b',
-            'p', 'i', 'd', 'watch_lock', 'watch_lock_threshold', 
+            'p', 'i', 'd', 'watch_lock', 'watch_lock_threshold',
+            'watch_lock_delay',
             'watch_relock', 'watch_relock_threshold',
             'dual_channel', 'channel_mixing',
             'pid_on_slow_enabled', 'pid_on_slow_strength',
@@ -272,6 +273,13 @@ class Parameters(BaseParameters):
         self.check_lock = Parameter(start=True)
         self.watch_lock = Parameter(start=True)
         self.watch_lock_threshold = Parameter(start=0.01)
+        # How long (in seconds) the control signal has to stay beyond
+        # `watch_lock_threshold` before a relock is started. This exists for
+        # setups where something else in the experiment (e.g. RF evaporation)
+        # kicks the control signal for a known, bounded time and it comes back
+        # by itself. `0` disables the delay: the lock is then judged from a
+        # single frame, which is the historic behaviour.
+        self.watch_lock_delay = Parameter(start=0)
         
         # Relock specific GUI parameters
         self.watch_relock = Parameter(start=True)

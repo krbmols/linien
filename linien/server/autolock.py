@@ -1,4 +1,5 @@
 import pickle
+import time
 import traceback
 import numpy as np
 from linien.common import get_lock_point, combine_error_signal, \
@@ -19,6 +20,9 @@ class Autolock:
         self.should_watch_lock = False
         self.approacher = None
         self._data_listener_added = False
+
+        self.watcher_last_value = 0
+        self._reset_watcher_delay()
 
         self.reset_properties()
 
@@ -203,6 +207,7 @@ class Autolock:
             # we start watching the lock status from now on.
             # this is done in `react_to_new_spectrum()` which is called regularly.
             self.watcher_last_value = np.mean(control_signal) / 8192
+            self._reset_watcher_delay()
             self.parameters.autolock_watching.value = True
         else:
             self.remove_data_listener()
@@ -216,17 +221,76 @@ class Autolock:
 
             self.parameters.autolock_running.value = False
 
+    def _reset_watcher_delay(self):
+        """Forget a deviation we were waiting out."""
+        self._watcher_deviation_since = None
+        self._watcher_reference = None
+
     def watch_lock(self, error_signal, control_signal):
-        """Check whether the laser is still in lock and init a relock if not."""
+        """Check whether the laser is still in lock and init a relock if not.
+
+        A control signal that jumps by more than `watch_lock_threshold`
+        between two frames means the lock was lost. If `watch_lock_delay` is
+        non-zero, such a jump is not acted upon straight away: the value the
+        signal jumped away from is remembered and the signal is given that
+        many seconds to come back to it. Only if it is still further away
+        than the threshold once the delay has passed do we relock. That way
+        an excursion caused by the experiment itself - RF evaporation, say -
+        that recovers on its own does not cost a relock.
+
+        With `watch_lock_delay` set to 0 a single frame decides, which is the
+        historic behaviour.
+
+        Railing the output is a real loss of control that no amount of
+        waiting can give back, so it always relocks immediately.
+        """
         mean = np.mean(control_signal) / 8192
 
-        diff = np.abs(mean - self.watcher_last_value)
-        lock_lost = diff > self.parameters.watch_lock_threshold.value
-
         too_close_to_edge = np.abs(mean) > 0.95
+        if too_close_to_edge:
+            self._reset_watcher_delay()
+            return self.relock()
 
-        if too_close_to_edge or lock_lost:
-            self.relock()
+        threshold = self.parameters.watch_lock_threshold.value
+        delay = self.parameters.watch_lock_delay.value or 0
+
+        if self._watcher_deviation_since is not None:
+            # we saw the control signal jump away from `_watcher_reference`
+            # and are waiting to see whether it comes back on its own.
+            if time.time() - self._watcher_deviation_since < delay:
+                return
+
+            reference = self._watcher_reference
+            waited = time.time() - self._watcher_deviation_since
+            self._reset_watcher_delay()
+
+            if np.abs(mean - reference) > threshold:
+                # still out after the delay: this was a real loss of lock
+                print('control signal still %.4f from %.4f after %.1f s: '
+                      'relocking' % (np.abs(mean - reference), reference,
+                                     waited))
+                return self.relock()
+
+            # the signal came back. Carry on watching from where we are now.
+            print('control signal came back to %.4f within %.1f s: '
+                  'no relock' % (mean, waited))
+            self.watcher_last_value = mean
+            return
+
+        if np.abs(mean - self.watcher_last_value) > threshold:
+            if delay <= 0:
+                return self.relock()
+
+            # remember where the signal was before it jumped and give it
+            # `delay` seconds to return there. `watcher_last_value` is
+            # deliberately left alone meanwhile, so that the comparison after
+            # the delay is against the pre-excursion value rather than
+            # against the excursion itself.
+            print('control signal moved from %.4f to %.4f: waiting %.1f s '
+                  'before deciding' % (self.watcher_last_value, mean, delay))
+            self._watcher_reference = self.watcher_last_value
+            self._watcher_deviation_since = time.time()
+            return
 
         self.watcher_last_value = mean
 
@@ -245,6 +309,7 @@ class Autolock:
         if not self.parameters.autolock_retrying.value:
             self.parameters.autolock_retrying.value = True
 
+        self._reset_watcher_delay()
         self.reset_properties()
         self._reset_scan()
 
@@ -259,6 +324,7 @@ class Autolock:
         self.parameters.autolock_approaching.value = False
         self.parameters.autolock_watching.value = False
         self.parameters.fetch_quadratures.value = True
+        self._reset_watcher_delay()
         self.remove_data_listener()
 
         self._reset_scan()

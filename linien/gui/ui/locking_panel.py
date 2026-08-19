@@ -28,6 +28,8 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
         self.ids.checkLockCheckbox.stateChanged.connect(self.check_lock_changed)
         self.ids.watchLockCheckbox.stateChanged.connect(self.watch_lock_changed)
         self.ids.watch_lock_threshold.valueChanged.connect(self.watch_lock_threshold_changed)
+        self.ids.watch_lock_delay.setKeyboardTracking(False)
+        self.ids.watch_lock_delay.valueChanged.connect(self.watch_lock_delay_changed)
         self.ids.autoOffsetCheckbox.stateChanged.connect(self.auto_offset_changed)
 
         # Parameters from actually clicking on the line using autolock
@@ -126,6 +128,22 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
             lambda v: v * 100
         )
         param2ui(params.autolock_determine_offset, self.ids.autoOffsetCheckbox)
+
+        # The delay is newer than the rest of the autolock, so a Red Pitaya
+        # that has not been redeployed does not have it. Grey the field out
+        # and say why rather than raising an AttributeError.
+        self.has_watch_lock_delay = hasattr(params, 'watch_lock_delay')
+        if self.has_watch_lock_delay:
+            param2ui(params.watch_lock_delay, self.ids.watch_lock_delay)
+        else:
+            for widget in (self.ids.watch_lock_delay,
+                           self.ids.watch_lock_delay_label,
+                           self.ids.watch_lock_delay_unit):
+                widget.setEnabled(False)
+                widget.setToolTip(
+                    'The Red Pitaya is running an older server without the '
+                    'relock delay. Deploy it with install_relock_server.'
+                )
 
         # Relock parameters:
         param2ui(params.watch_relock, self.ids.watchLockCheckbox_relock)
@@ -327,6 +345,12 @@ class LockingPanel(QtWidgets.QWidget, CustomWidget):
 
     def watch_lock_threshold_changed(self):
         self.parameters.watch_lock_threshold.value = self.ids.watch_lock_threshold.value() / 100.0
+
+    def watch_lock_delay_changed(self):
+        # stored in seconds, exactly as it is shown
+        if not getattr(self, 'has_watch_lock_delay', False):
+            return
+        self.parameters.watch_lock_delay.value = self.ids.watch_lock_delay.value()
 
     def reset_lock_failed(self):
         self.parameters.autolock_failed.value = False
