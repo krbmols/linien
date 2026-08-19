@@ -561,7 +561,12 @@ class WavemeterLock:
             self.parameters.wavemeter_lock_retrying.value = True
 
         self.reset_properties()
-        self._reset_scan()
+        # Leave the ramp centre where it is.  It is the result of having
+        # steered the laser onto the setpoint, and a laser that has just
+        # dropped is usually still near it; winding the centre back to where it
+        # sat before any steering happened throws the laser as far from the
+        # setpoint as it was when the lock was first started.
+        self._reset_scan(restore_center=False)
         self._begin_steering()
         self.add_data_listener()
 
@@ -591,12 +596,19 @@ class WavemeterLock:
     # `stop` is what lock_status_panel calls on the running task.
     stop = exposed_stop
 
-    def _reset_scan(self):
+    def _reset_scan(self, restore_center=True):
+        """Release the lockbox and put the scan back.
+
+        The ramp centre is only wound back when the whole operation is over:
+        while relocking it holds the tuning that put the laser on the setpoint
+        in the first place, and is the best starting point there is.
+        """
         self.control.pause_acquisition()
 
         self.send_lockbox_TTL(locked=False)
 
-        self.parameters.center.value = self.initial_ramp_center
+        if restore_center:
+            self.parameters.center.value = self.initial_ramp_center
         self.parameters.ramp_amplitude.value = \
             self.parameters.wavemeter_lock_initial_ramp_amplitude.value
         self.parameters.ramp_speed.value = self.initial_ramp_speed

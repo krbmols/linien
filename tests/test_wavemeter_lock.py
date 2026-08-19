@@ -652,6 +652,50 @@ feed(lock, parameters, laser, 5)
 check('TTL released', parameters.gpio_p_out.value == 0b11111111)
 check('back to steering', parameters.wavemeter_lock_steering.value)
 
+print('relocking keeps the tuning that reached the setpoint')
+# The laser starts far from the setpoint, so steering has to move the ramp
+# centre a long way. After a drop, that tuning is the best starting point there
+# is -- winding it back would put the laser as far away as it began.
+parameters = make_parameters()
+parameters.wavemeter_skip_line_search.value = True
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=1.5)
+lock, control, monitor = start_lock(parameters, laser)
+start_center = parameters.center.value
+check('locks from a long way off',
+      feed_until(lock, parameters, laser,
+                 lambda: parameters.wavemeter_lock_locked.value),
+      '(status: %s)' % parameters.wavemeter_status.value)
+steered_center = parameters.center.value
+check('steering did move the centre a long way',
+      abs(steered_center - start_center) > 0.1,
+      '(moved %.3f V)' % (steered_center - start_center))
+
+# now drop the lock
+laser.offset_GHz = 2.0
+feed(lock, parameters, laser, parameters.wavemeter_max_out_of_range.value + 1)
+check('relocked', parameters.wavemeter_lock_steering.value)
+# It may have moved by a calibration probe or a correction, but it must be
+# near where steering left it rather than back where the lock began.
+check('kept the steered centre, did not wind back',
+      abs(parameters.center.value - steered_center)
+      < abs(parameters.center.value - start_center) / 2,
+      '(centre went from %.3f to %.3f, start was %.3f)'
+      % (steered_center, parameters.center.value, start_center))
+
+print('stopping does wind the centre back')
+parameters = make_parameters()
+parameters.wavemeter_skip_line_search.value = True
+laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=1.5)
+lock, control, monitor = start_lock(parameters, laser)
+start_center = parameters.center.value
+feed_until(lock, parameters, laser,
+           lambda: parameters.wavemeter_lock_locked.value)
+lock.stop()
+check('centre restored on stop',
+      abs(parameters.center.value - start_center) < 1e-9,
+      '(left at %.3f, started at %.3f)'
+      % (parameters.center.value, start_center))
+
 print('a lock on the wrong line is released again')
 parameters = make_parameters()
 laser = FakeLaser(parameters, GHz_per_V=-3.0, offset_GHz=0.0)
