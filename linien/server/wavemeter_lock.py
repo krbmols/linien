@@ -119,6 +119,7 @@ class WavemeterLock:
         self.out_of_range_count = 0
         self.settled_count = 0
         self.last_detuning_MHz = None
+        self.last_correction_from_MHz = None
         self.slope_GHz_per_V = None
         self.calibration_probe_idx = 0
         self.calibration_start = None
@@ -331,12 +332,19 @@ class WavemeterLock:
         """
         if self.calibration_start is None:
             self.calibration_start = (self.parameters.center.value, detuning_MHz)
-            self._step_center(CALIBRATION_PROBES_V[self.calibration_probe_idx])
+            probe = CALIBRATION_PROBES_V[self.calibration_probe_idx]
+            print('wavemeter lock: calibrating, probing %+.3f V from centre '
+                  '%+.3f V at %.1f MHz'
+                  % (probe, self.parameters.center.value, detuning_MHz))
+            self._step_center(probe)
             return
 
         start_center, start_detuning = self.calibration_start
         moved_MHz = detuning_MHz - start_detuning
         probe_V = self.parameters.center.value - start_center
+
+        print('wavemeter lock: probe of %+.3f V moved the laser %+.1f MHz'
+              % (probe_V, moved_MHz))
 
         if abs(moved_MHz) < CALIBRATION_MIN_SHIFT_MHZ:
             # Too small to trust: the laser may just be jittering. Try a bigger
@@ -359,6 +367,23 @@ class WavemeterLock:
     def _correct_center(self, detuning_MHz):
         # Detuning is measured - setpoint, so move the centre the other way.
         needed_V = -(detuning_MHz * 1e-3) / self.slope_GHz_per_V
+
+        # A correction that leaves the laser further away than it started means
+        # the slope is wrong -- most likely its sign -- and repeating it walks
+        # the laser off. Worth seeing in the log rather than inferring from the
+        # ramp centre eventually hitting a rail.
+        if self.last_correction_from_MHz is not None:
+            if abs(detuning_MHz) > abs(self.last_correction_from_MHz):
+                print('wavemeter lock: last correction made it worse '
+                      '(%.1f -> %.1f MHz); slope %+.3f GHz/V may be wrong'
+                      % (self.last_correction_from_MHz, detuning_MHz,
+                         self.slope_GHz_per_V))
+        self.last_correction_from_MHz = detuning_MHz
+
+        print('wavemeter lock: %.1f MHz out, slope %+.3f GHz/V, moving centre '
+              '%+.3f V from %+.3f V'
+              % (detuning_MHz, self.slope_GHz_per_V, needed_V * STEERING_GAIN,
+                 self.parameters.center.value))
         self._step_center(needed_V * STEERING_GAIN)
 
     def _step_center(self, step_V):
@@ -551,7 +576,8 @@ class WavemeterLock:
     # ------------------------------------------------------------- control
 
     def relock(self, reason):
-        print('wavemeter lock: relocking (%s)' % reason)
+        print('wavemeter lock: relocking (%s) from centre %+.3f V'
+              % (reason, self.parameters.center.value))
         # _reset_scan takes the TTL back high, releasing the lockbox if the
         # relock was decided after engaging.
 
